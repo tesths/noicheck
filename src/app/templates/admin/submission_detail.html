@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block title %}提交详情 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="detail-grid">
+  <article class="panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">提交详情</p>
+        <h1>{{ submission.student_name }}</h1>
+      </div>
+      <a class="text-link" href="{{ url_for('admin.submission_list') }}">返回列表</a>
+    </div>
+    <dl class="meta-grid">
+      <div>
+        <dt>题目链接</dt>
+        <dd><a class="text-link" href="{{ submission.problem_url }}" target="_blank" rel="noreferrer">{{ submission.problem_url }}</a></dd>
+      </div>
+      <div>
+        <dt>题目标题</dt>
+        <dd>{{ submission.problem_title or "-" }}</dd>
+      </div>
+      <div>
+        <dt>抓题状态</dt>
+        <dd>{{ submission.fetch_status }}</dd>
+      </div>
+      <div>
+        <dt>诊断状态</dt>
+        <dd>{{ submission.diagnosis_status }}</dd>
+      </div>
+    </dl>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">学生代码</p>
+    <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">抓取到的题面</p>
+    {% if submission.problem_snapshot %}
+      {% if submission.problem_snapshot.fetch_error %}
+        <p class="empty-state">{{ submission.problem_snapshot.fetch_error }}</p>
+      {% else %}
+        <dl class="content-list">
+          <div>
+            <dt>描述</dt>
+            <dd>{{ submission.problem_snapshot.description_text or "-" }}</dd>
+          </div>
+          <div>
+            <dt>输入</dt>
+            <dd>{{ submission.problem_snapshot.input_text or "-" }}</dd>
+          </div>
+          <div>
+            <dt>输出</dt>
+            <dd>{{ submission.problem_snapshot.output_text or "-" }}</dd>
+          </div>
+          <div>
+            <dt>样例输入</dt>
+            <dd><pre class="inline-pre">{{ submission.problem_snapshot.sample_input_text or "-" }}</pre></dd>
+          </div>
+          <div>
+            <dt>样例输出</dt>
+            <dd><pre class="inline-pre">{{ submission.problem_snapshot.sample_output_text or "-" }}</pre></dd>
+          </div>
+        </dl>
+      {% endif %}
+    {% else %}
+      <p class="empty-state">没有题面快照。</p>
+    {% endif %}
+  </article>
+
+  <article class="panel">
+    <p class="eyebrow">AI 诊断</p>
+    {% if submission.latest_diagnosis_run %}
+      {% if submission.latest_diagnosis_run.status == "success" %}
+        {% set result = submission.latest_diagnosis_run.structured_result_json %}
+        <div class="diagnosis-summary">
+          <h2>{{ result.overall_assessment }}</h2>
+          <p>置信度：{{ result.confidence }}</p>
+        </div>
+        {% if result.missing_context %}
+          <div class="tag-list">
+            {% for item in result.missing_context %}
+              <span class="tag">{{ item }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% for issue in result.possible_issues %}
+          <section class="issue-card">
+            <h3>{{ loop.index }}. {{ issue.title }}</h3>
+            <p><strong>证据：</strong>{{ issue.evidence }}</p>
+            <p><strong>原因：</strong>{{ issue.explanation }}</p>
+            <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+          </section>
+        {% endfor %}
+        <section class="note-block">
+          <h3>老师可直接说的话</h3>
+          <ul>
+            {% for item in result.teacher_talking_points %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+        <section class="note-block">
+          <h3>下一步检查</h3>
+          <ul>
+            {% for item in result.next_step_checks %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% else %}
+        <p class="empty-state">{{ submission.latest_diagnosis_run.error_message or "诊断尚未成功。" }}</p>
+      {% endif %}
+    {% else %}
+      <p class="empty-state">还没有诊断记录。</p>
+    {% endif %}
+  </article>
+</section>
+{% endblock %}
+

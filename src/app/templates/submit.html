@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}学生提交 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div class="hero-copy">
+    <p class="eyebrow">匿名提交 · 教师后台可见</p>
+    <h1>提交你的 OpenJudge 代码</h1>
+    <p>输入姓名或昵称、OpenJudge 题目链接，再粘贴 C++ 代码。系统会抓取题面并生成供老师参考的 AI 诊断。</p>
+  </div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>姓名或昵称</span>
+      <input type="text" name="student_name" maxlength="80" required value="{{ form_data.student_name if form_data else '' }}">
+    </label>
+    <label class="field">
+      <span>题目链接</span>
+      <input type="url" name="problem_url" maxlength="500" required placeholder="https://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
+    </label>
+    <label class="field">
+      <span>C++ 代码</span>
+      <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
+    </label>
+    <button class="primary-button" type="submit">提交并生成诊断</button>
+  </form>
+</section>
+{% endblock %}
+
