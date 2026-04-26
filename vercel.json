@@ -3,9 +3,6 @@
   "version": 2,
   "framework": "flask",
   "functions": {
-    "src/index.py": {
-      "maxDuration": 60
-    },
     "api/queues/process-submission.js": {
       "maxDuration": 60,
       "experimentalTriggers": [

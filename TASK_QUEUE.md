@@ -7,3 +7,4 @@
 - [进行中] 补充 .env.example：生成可直接复制到 Vercel 的生产环境变量模板
 - [进行中] 修复 Vercel 部署冲突：移除 builds 与 functions 混用，切换到单一 functions 配置
 - [进行中] 修复 Vercel runtime 报错：移除 functions 中无效的官方 Node runtime 字段
+- [进行中] 修复 Vercel unmatched function pattern：移除对 Flask 框架入口 `src/index.py` 的 functions 显式匹配
