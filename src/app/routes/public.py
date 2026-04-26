@@ -9,7 +9,7 @@ from ..extensions import db
 from ..models import Submission
 from ..services.auth import hash_client_ip
 from ..services.job_queue import JobQueueError
-from ..services.jobs import enqueue_fetch_problem_job
+from ..services.jobs import enqueue_diagnosis_job
 from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
 
 public_bp = Blueprint("public", __name__)
@@ -169,7 +169,7 @@ def _persist_submission(submission: Submission) -> Submission:
 
 
 def _sync_problem_snapshot(submission: Submission) -> None:
-    enqueue_fetch_problem_job(submission, requested_by="system")
+    enqueue_diagnosis_job(submission, requested_by="system")
 
 
 @public_bp.get("/")
@@ -221,8 +221,8 @@ def submit():
         _sync_problem_snapshot(submission)
     except (JobQueueError, SQLAlchemyError):
         db.session.rollback()
-        current_app.logger.exception("提交后排队抓题失败")
-        flash("提交记录已保存，但后台排队失败，请稍后重试或联系老师。", "error")
+        current_app.logger.exception("提交后排队抓题和诊断失败")
+        flash("提交记录已保存，但后台分析排队失败，请稍后重试或联系老师。", "error")
         return render_template("submit.html", form_data=form_data), 500
 
     return redirect(url_for("public.submit_success", public_id=submission.public_id))

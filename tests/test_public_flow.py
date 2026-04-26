@@ -23,7 +23,7 @@ def _detail_csrf_token(client, public_id: str) -> str:
     return BeautifulSoup(detail_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
 
 
-def test_submit_persists_submission_and_queues_problem_fetch(app, client, monkeypatch):
+def test_submit_persists_submission_and_queues_fetch_and_diagnosis(app, client, monkeypatch):
     def fail_if_fetch_called(self, url):
         raise AssertionError("提交接口不应同步抓题")
 
@@ -49,11 +49,11 @@ def test_submit_persists_submission_and_queues_problem_fetch(app, client, monkey
         assert submission.problem_title is None
         assert submission.problem_path is None
         assert submission.fetch_status == "queued"
-        assert submission.diagnosis_status == "pending"
+        assert submission.diagnosis_status == "queued"
         assert submission.problem_snapshot is None
         assert jobs == [
             {
-                "job_type": "fetch-problem",
+                "job_type": "fetch-and-diagnose",
                 "submission_public_id": submission.public_id,
                 "requested_by": "system",
             }
@@ -73,6 +73,7 @@ def test_submit_success_page_shows_queued_status(app, client):
 
     assert response.status_code == 200
     assert "已进入后台排队".encode() in response.data
+    assert "自动继续 AI 诊断".encode() in response.data
     assert "queued".encode() in response.data
 
 

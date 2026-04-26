@@ -9,3 +9,4 @@
 - [进行中] 修复 Vercel runtime 报错：移除 functions 中无效的官方 Node runtime 字段
 - [进行中] 修复 Vercel unmatched function pattern：移除对 Flask 框架入口 `src/index.py` 的 functions 显式匹配
 - [进行中] 修复线上 CSS 404：统一样式资源路径为 `/styles.css`，兼容 Vercel `public/` 根路径静态资源
+- [进行中] 调整异步流程：学生提交后自动排队抓题并继续 AI 诊断，老师仅在失败时重试
