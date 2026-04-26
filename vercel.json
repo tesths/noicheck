@@ -1,23 +1,14 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "builds": [
-    {
-      "src": "public/styles.css",
-      "use": "@vercel/static"
-    },
-    {
-      "src": "api/queues/process-submission.js",
-      "use": "@vercel/node"
-    },
-    {
-      "src": "src/index.py",
-      "use": "@vercel/python"
-    }
-  ],
+  "framework": "flask",
   "functions": {
+    "src/index.py": {
+      "maxDuration": 60
+    },
     "api/queues/process-submission.js": {
       "runtime": "@vercel/node",
+      "maxDuration": 60,
       "experimentalTriggers": [
         {
           "type": "queue/v2beta",
@@ -25,11 +16,5 @@
         }
       ]
     }
-  },
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/src/index.py"
-    }
-  ]
+  }
 }

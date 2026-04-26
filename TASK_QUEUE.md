@@ -5,3 +5,4 @@
 - [进行中] 改回同步流程：学生提交时同步抓题，教师在后台点击后再进行 AI 分析
 - [进行中] 落地 Vercel Queues 异步方案：Flask 负责落库与排队，Node consumer 触发后台抓题和 AI 诊断
 - [进行中] 补充 .env.example：生成可直接复制到 Vercel 的生产环境变量模板
+- [进行中] 修复 Vercel 部署冲突：移除 builds 与 functions 混用，切换到单一 functions 配置
