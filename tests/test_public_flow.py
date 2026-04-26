@@ -77,17 +77,17 @@ def test_submit_success_page_shows_queued_status(app, client):
 
 
 def test_stylesheet_is_served(client):
-    response = client.get("/public/styles.css")
+    response = client.get("/styles.css")
 
     assert response.status_code == 200
     assert b":root" in response.data
 
 
-def test_submit_page_references_public_stylesheet(client):
+def test_submit_page_references_stylesheet(client):
     response = client.get("/submit")
 
     assert response.status_code == 200
-    assert b'/public/styles.css' in response.data
+    assert b'/styles.css' in response.data
 
 
 def test_submit_rejects_invalid_url(client):
