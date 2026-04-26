@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from flask import Flask
 
 from .bootstrap import bootstrap_app, validate_runtime_config
@@ -11,11 +9,9 @@ from .services.auth import register_auth_commands
 
 
 def create_app(config_object: type[Config] | None = None) -> Flask:
-    app = Flask(__name__, instance_relative_config=True)
+    app = Flask(__name__)
     app.config.from_object(config_object or Config)
     validate_runtime_config(app)
-
-    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
 
     db.init_app(app)
     migrate.init_app(app, db)

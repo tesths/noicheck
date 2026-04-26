@@ -48,3 +48,30 @@ def test_create_app_allows_missing_admin_and_deepseek_in_production_if_core_env_
 
     app = create_app(ProductionConfig)
     assert app is not None
+
+
+def test_create_app_does_not_create_instance_directory_on_startup(monkeypatch):
+    import pathlib
+
+    def fail_mkdir(self, *args, **kwargs):
+        raise AssertionError("应用启动时不应创建 instance 目录")
+
+    monkeypatch.setattr(pathlib.Path, "mkdir", fail_mkdir)
+
+    class MinimalConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = False
+
+    app = create_app(MinimalConfig)
+    assert app is not None
