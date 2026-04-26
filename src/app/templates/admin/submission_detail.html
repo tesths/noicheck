@@ -84,64 +84,66 @@
     {% if submission.latest_diagnosis_run %}
       {% if submission.latest_diagnosis_run.status == "success" %}
         {% set result = submission.latest_diagnosis_run.structured_result_json %}
-        <div class="diagnosis-layout">
-          <div class="diagnosis-main">
-            <div class="diagnosis-summary">
-              <p class="eyebrow">诊断摘要</p>
-              <h2>{{ result.overall_assessment }}</h2>
-              <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
-            </div>
-            <section class="note-block">
-              <h3>诊断原因与可能位置</h3>
-            </section>
-            {% if result.missing_context %}
-              <div class="tag-list">
-                {% for item in result.missing_context %}
-                  <span class="tag">{{ item }}</span>
-                {% endfor %}
-              </div>
-            {% endif %}
-            {% for issue in result.possible_issues %}
-              <section class="issue-card">
-                <h3>{{ loop.index }}. {{ issue.title }}</h3>
-                <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
-                <p><strong>证据：</strong>{{ issue.evidence }}</p>
-                <p><strong>原因：</strong>{{ issue.explanation }}</p>
-                <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
-              </section>
-            {% endfor %}
-            {% if result.teacher_talking_points %}
-              <section class="note-block">
-                <h3>老师可直接说的话</h3>
-                <ul>
-                  {% for item in result.teacher_talking_points %}
-                    <li>{{ item }}</li>
-                  {% endfor %}
-                </ul>
-              </section>
-            {% endif %}
-            {% if result.next_step_checks %}
-              <section class="note-block">
-                <h3>下一步检查</h3>
-                <ul>
-                  {% for item in result.next_step_checks %}
-                    <li>{{ item }}</li>
-                  {% endfor %}
-                </ul>
-              </section>
-            {% endif %}
-          </div>
-          <aside class="diagnosis-side">
-            <article class="panel diagnosis-program-panel">
-              <p class="eyebrow">参考程序</p>
-              <h3>正确的完整程序</h3>
-              <pre class="code-block"><code>{{ result.correct_program or "模型本次未返回完整程序。" }}</code></pre>
-            </article>
-          </aside>
+        <div class="diagnosis-summary">
+          <p class="eyebrow">诊断摘要</p>
+          <h2>{{ result.overall_assessment }}</h2>
+          <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
         </div>
+        <section class="note-block">
+          <h3>诊断原因与可能位置</h3>
+        </section>
+        {% if result.missing_context %}
+          <div class="tag-list">
+            {% for item in result.missing_context %}
+              <span class="tag">{{ item }}</span>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% for issue in result.possible_issues %}
+          <section class="issue-card">
+            <h3>{{ loop.index }}. {{ issue.title }}</h3>
+            <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
+            <p><strong>证据：</strong>{{ issue.evidence }}</p>
+            <p><strong>原因：</strong>{{ issue.explanation }}</p>
+            <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+          </section>
+        {% endfor %}
+        {% if result.teacher_talking_points %}
+          <section class="note-block">
+            <h3>老师可直接说的话</h3>
+            <ul>
+              {% for item in result.teacher_talking_points %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
+        {% if result.next_step_checks %}
+          <section class="note-block">
+            <h3>下一步检查</h3>
+            <ul>
+              {% for item in result.next_step_checks %}
+                <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </section>
+        {% endif %}
       {% else %}
         <p class="empty-state">{{ submission.latest_diagnosis_run.error_message or "诊断尚未成功。" }}</p>
       {% endif %}
+    {% else %}
+      <p class="empty-state">还没有诊断记录。</p>
+    {% endif %}
+  </article>
+
+  <article class="panel diagnosis-program-panel">
+    <p class="eyebrow">参考程序</p>
+    {% if submission.latest_diagnosis_run and submission.latest_diagnosis_run.status == "success" %}
+      {% set result = submission.latest_diagnosis_run.structured_result_json %}
+      <h3>正确的完整程序</h3>
+      <pre class="code-block"><code>{{ result.correct_program or "模型本次未返回完整程序。" }}</code></pre>
+    {% elif submission.latest_diagnosis_run %}
+      <p class="empty-state">当前诊断未成功，暂时没有可展示的参考程序。</p>
     {% else %}
       <p class="empty-state">还没有诊断记录。</p>
     {% endif %}

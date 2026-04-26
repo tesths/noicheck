@@ -288,12 +288,6 @@ th {
   grid-column: 1 / -1;
 }
 
-.diagnosis-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
-  gap: 24px;
-}
-
 .diagnosis-summary {
   margin-bottom: 20px;
   padding: 18px 20px;
@@ -318,7 +312,7 @@ th {
   font-size: 13px;
 }
 
-.diagnosis-side .code-block {
+.diagnosis-program-panel .code-block {
   max-height: 720px;
   overflow: auto;
 }
@@ -381,7 +375,6 @@ th {
 @media (max-width: 900px) {
   .hero-card,
   .detail-grid,
-  .diagnosis-layout,
   .meta-grid,
   .content-list {
     grid-template-columns: 1fr;
