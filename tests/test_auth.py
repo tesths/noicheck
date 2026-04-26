@@ -477,3 +477,55 @@ def test_submit_retries_after_database_repair_on_first_commit_failure(app, clien
     with app.app_context():
         submission = Submission.query.filter_by(student_name="重试学生").one()
         assert submission.public_id
+
+
+def test_submit_falls_back_to_explicit_id_when_schema_repair_cannot_fix(app, client, monkeypatch):
+    original_commit = db.session.commit
+    state = {"commit_calls": 0, "repair_calls": 0, "allocated_ids": 0}
+
+    def flaky_commit():
+        state["commit_calls"] += 1
+        if state["commit_calls"] <= 2:
+            raise sqlalchemy.exc.ProgrammingError(
+                "INSERT INTO submissions ...",
+                {},
+                Exception("null value in column id violates not-null constraint"),
+            )
+        return original_commit()
+
+    def broken_ensure_database_schema(current_app, force=False):
+        state["repair_calls"] += 1
+        raise sqlalchemy.exc.ProgrammingError(
+            "ALTER TABLE submissions ...",
+            {},
+            Exception("permission denied for table submissions"),
+        )
+
+    def fake_allocate_submission_id():
+        state["allocated_ids"] += 1
+        return 99
+
+    monkeypatch.setattr("src.app.routes.public.db.session.commit", flaky_commit)
+    monkeypatch.setattr("src.app.routes.public.ensure_database_schema", broken_ensure_database_schema)
+    monkeypatch.setattr("src.app.routes.public._allocate_submission_id", fake_allocate_submission_id)
+    monkeypatch.setattr("src.app.routes.public._sync_submission_id_sequence_best_effort", lambda: None)
+
+    response = client.post(
+        "/submit",
+        data={
+            "student_name": "显式主键学生",
+            "problem_url": "http://noi.openjudge.cn/ch0107/01/",
+            "code_text": "int main() { return 0; }",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert state["repair_calls"] == 1
+    assert state["allocated_ids"] == 1
+    assert state["commit_calls"] == 3
+
+    with app.app_context():
+        submission = Submission.query.filter_by(student_name="显式主键学生").one()
+        assert submission.id == 99
+        assert submission.public_id

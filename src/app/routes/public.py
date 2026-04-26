@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..bootstrap import ensure_database_schema
@@ -74,7 +74,68 @@ def _build_submission(
     )
 
 
+def _submission_write_state() -> dict[str, bool]:
+    return current_app.extensions.setdefault("submission_write_state", {"explicit_id_mode": False})
+
+
+def _allocate_submission_id() -> int:
+    if db.engine.dialect.name == "postgresql":
+        db.session.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": 310701})
+
+    next_id = db.session.execute(select(func.coalesce(func.max(Submission.id), 0) + 1)).scalar_one()
+    return int(next_id)
+
+
+def _sync_submission_id_sequence_best_effort() -> None:
+    if db.engine.dialect.name != "postgresql":
+        return
+
+    try:
+        sequence_name = db.session.execute(
+            text("SELECT pg_get_serial_sequence('submissions', 'id')")
+        ).scalar()
+        if not sequence_name:
+            return
+
+        db.session.execute(
+            text(
+                """
+                SELECT setval(
+                    CAST(:sequence_name AS regclass),
+                    COALESCE((SELECT MAX(id) FROM submissions), 1),
+                    true
+                )
+                """
+            ),
+            {"sequence_name": sequence_name},
+        )
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("同步 submissions.id 序列失败，后续提交将继续走显式主键兜底")
+
+
+def _persist_submission_with_explicit_id(submission: Submission) -> Submission:
+    retried_submission = _build_submission(
+        student_name=submission.student_name,
+        problem_url=submission.problem_url,
+        code_text=submission.code_text,
+        client_ip_hash=submission.client_ip_hash,
+    )
+    retried_submission.id = _allocate_submission_id()
+    db.session.add(retried_submission)
+    db.session.commit()
+
+    _submission_write_state()["explicit_id_mode"] = True
+    _sync_submission_id_sequence_best_effort()
+    return retried_submission
+
+
 def _persist_submission(submission: Submission) -> Submission:
+    write_state = _submission_write_state()
+    if write_state["explicit_id_mode"]:
+        return _persist_submission_with_explicit_id(submission)
+
     try:
         db.session.add(submission)
         db.session.commit()
@@ -83,7 +144,11 @@ def _persist_submission(submission: Submission) -> Submission:
         db.session.rollback()
         current_app.logger.exception("保存提交记录失败，准备强制修复数据库后重试")
 
-    ensure_database_schema(current_app, force=True)
+    try:
+        ensure_database_schema(current_app, force=True)
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("强制修复数据库失败，准备改用显式主键重试保存")
 
     retried_submission = _build_submission(
         student_name=submission.student_name,
@@ -91,9 +156,14 @@ def _persist_submission(submission: Submission) -> Submission:
         code_text=submission.code_text,
         client_ip_hash=submission.client_ip_hash,
     )
-    db.session.add(retried_submission)
-    db.session.commit()
-    return retried_submission
+    try:
+        db.session.add(retried_submission)
+        db.session.commit()
+        return retried_submission
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("修表后再次保存仍失败，准备改用显式主键兜底")
+        return _persist_submission_with_explicit_id(submission)
 
 
 @public_bp.get("/")
