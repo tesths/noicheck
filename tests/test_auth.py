@@ -276,3 +276,56 @@ def test_request_path_repairs_legacy_schema_when_startup_repair_was_skipped(tmp_
         db.session.add(repaired_submission)
         db.session.commit()
         assert repaired_submission.public_id
+
+
+def test_request_path_repairs_schema_missing_core_submission_columns(tmp_path, monkeypatch):
+    database_path = tmp_path / "legacy-core-missing.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE submissions (
+            id INTEGER PRIMARY KEY,
+            client_ip_hash VARCHAR(64)
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO submissions (id, client_ip_hash)
+        VALUES (1, 'legacy-ip-hash')
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    class BootstrapConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+
+    monkeypatch.setattr("src.app.bootstrap.bootstrap_app", lambda app: None)
+
+    app = create_app(BootstrapConfig)
+    client = app.test_client()
+    response = client.get("/submit")
+    assert response.status_code == 200
+
+    with app.app_context():
+        assert Submission.query.count() == 1
+        repaired_row = Submission.query.first()
+        assert repaired_row.public_id
+        assert repaired_row.student_name == ""
+        assert repaired_row.problem_url == ""
+        assert repaired_row.code_text == ""

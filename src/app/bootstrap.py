@@ -86,11 +86,14 @@ def _repair_legacy_schema(app: Flask) -> None:
     timestamp_type = "TIMESTAMP WITH TIME ZONE" if dialect_name == "postgresql" else "DATETIME"
 
     column_definitions = {
+        "student_name": "VARCHAR(80)",
+        "problem_url": "VARCHAR(500)",
         "public_id": "VARCHAR(32)",
         "problem_source": "VARCHAR(32)",
         "problem_title": "VARCHAR(255)",
         "problem_path": "VARCHAR(120)",
         "language": "VARCHAR(16)",
+        "code_text": "TEXT",
         "client_ip_hash": "VARCHAR(64)",
         "fetch_status": "VARCHAR(16)",
         "diagnosis_status": "VARCHAR(16)",
@@ -118,8 +121,11 @@ def _repair_legacy_schema(app: Flask) -> None:
             )
 
         defaults = {
+            "student_name": "",
+            "problem_url": "",
             "problem_source": "openjudge",
             "language": "cpp",
+            "code_text": "",
             "fetch_status": "pending",
             "diagnosis_status": "pending",
         }
