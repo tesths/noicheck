@@ -1,12 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "crons": [
-    {
-      "path": "/internal/cron/process-submissions",
-      "schedule": "0 1 * * *"
-    }
-  ],
   "builds": [
     {
       "src": "public/styles.css",

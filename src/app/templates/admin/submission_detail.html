@@ -12,8 +12,8 @@
         {% if submission.diagnosis_status != "success" %}
           <form method="post" action="{{ url_for('admin.generate_diagnosis', public_id=submission.public_id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <button class="primary-button" type="submit" {% if submission.diagnosis_status == "running" %}disabled{% endif %}>
-              {% if submission.diagnosis_status == "failed" %}重新排队等待计划任务{% elif submission.diagnosis_status == "running" %}后台处理中{% else %}等待计划任务处理{% endif %}
+            <button class="primary-button" type="submit">
+              {% if submission.diagnosis_status == "failed" %}重新生成 AI 诊断{% else %}生成 AI 诊断{% endif %}
             </button>
           </form>
         {% endif %}

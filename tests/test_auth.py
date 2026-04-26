@@ -309,6 +309,7 @@ def test_request_path_repairs_legacy_schema_when_startup_repair_was_skipped(tmp_
         REMEMBER_COOKIE_SECURE = False
 
     monkeypatch.setattr("src.app.bootstrap.bootstrap_app", lambda app: None)
+    monkeypatch.setattr("src.app.routes.public._sync_problem_snapshot", lambda submission: None)
 
     app = create_app(BootstrapConfig)
     client = app.test_client()
@@ -459,6 +460,7 @@ def test_submit_retries_after_database_repair_on_first_commit_failure(app, clien
 
     monkeypatch.setattr("src.app.routes.public.db.session.commit", flaky_commit)
     monkeypatch.setattr("src.app.routes.public.ensure_database_schema", fake_ensure_database_schema)
+    monkeypatch.setattr("src.app.routes.public._sync_problem_snapshot", lambda submission: None)
 
     response = client.post(
         "/submit",
@@ -509,6 +511,7 @@ def test_submit_falls_back_to_explicit_id_when_schema_repair_cannot_fix(app, cli
     monkeypatch.setattr("src.app.routes.public.ensure_database_schema", broken_ensure_database_schema)
     monkeypatch.setattr("src.app.routes.public._allocate_submission_id", fake_allocate_submission_id)
     monkeypatch.setattr("src.app.routes.public._sync_submission_id_sequence_best_effort", lambda: None)
+    monkeypatch.setattr("src.app.routes.public._sync_problem_snapshot", lambda submission: None)
 
     response = client.post(
         "/submit",

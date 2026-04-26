@@ -31,8 +31,6 @@ class TestConfig:
     SUBMISSION_CODE_MAX_LENGTH = 20000
     RATE_LIMIT_MAX_SUBMISSIONS = 20
     RATE_LIMIT_WINDOW_SECONDS = 300
-    CRON_SECRET = "test-cron-secret"
-    CRON_BATCH_SIZE = 5
 
 
 @pytest.fixture()

@@ -73,5 +73,3 @@ class Config:
     SUBMISSION_CODE_MAX_LENGTH = int(os.getenv("SUBMISSION_CODE_MAX_LENGTH", "20000"))
     RATE_LIMIT_MAX_SUBMISSIONS = int(os.getenv("RATE_LIMIT_MAX_SUBMISSIONS", "20"))
     RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "300"))
-    CRON_SECRET = os.getenv("CRON_SECRET", "").strip()
-    CRON_BATCH_SIZE = int(os.getenv("CRON_BATCH_SIZE", "5"))
