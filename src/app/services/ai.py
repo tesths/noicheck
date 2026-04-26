@@ -64,10 +64,15 @@ class DeepSeekDiagnosisService:
                         "content": (
                             "请根据题目和学生程序，帮老师检查程序可能错在哪里。"
                             "不要假装运行过代码，只能根据题目和代码推断。"
+                            "除代码外，所有说明文字都必须使用简体中文。"
+                            "诊断必须分成两部分："
+                            "第一部分是诊断原因，要指出可能出错的代码位置；"
+                            "第二部分是完整正确程序。"
                             "请输出严格 JSON，字段固定为 "
                             "overall_assessment, confidence, missing_context, "
-                            "possible_issues, teacher_talking_points, next_step_checks。"
-                            "possible_issues 最多 3 条，每条包含 title, evidence, explanation, suggested_fix。"
+                            "possible_issues, teacher_talking_points, next_step_checks, correct_program。"
+                            "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
+                            "correct_program 必须给出一份可以直接参考的完整正确 C++ 程序。"
                         ),
                     },
                     {
@@ -101,7 +106,11 @@ class DeepSeekDiagnosisService:
     def _build_user_prompt(self, payload: DiagnosisPayload) -> str:
         return "\n\n".join(
             [
-                "请你根据下面的题目和程序，检查程序可能错误的地方，并给出老师可直接转述的修改建议。",
+                "请你根据下面的题目和程序做诊断。",
+                "输出重点只有两部分：",
+                "1. 诊断原因：指出程序可能错在哪里，并尽量说明可能出错的位置。",
+                "2. 正确的完整程序：给出一份完整正确的 C++ 参考程序。",
+                "除代码外，请所有说明都使用简体中文。",
                 f"题目链接：{payload.problem_url}",
                 f"题目标题：{payload.problem_title or '未知'}",
                 f"题目描述：{payload.description_text or '未抓取到'}",
@@ -138,6 +147,14 @@ def _normalize_result_payload(payload: Any) -> dict[str, Any]:
     )
     evidence = payload.get("证据") or payload.get("原因") or overall
     title = payload.get("title") or payload.get("问题标题") or "可能的主要问题"
+    correct_program = (
+        payload.get("correct_program")
+        or payload.get("完整正确程序")
+        or payload.get("正确程序")
+        or payload.get("参考程序")
+        or payload.get("完整程序")
+        or ""
+    )
     possible_issues = payload.get("possible_issues")
     if isinstance(possible_issues, list):
         normalized_issues = [_normalize_issue(item, overall, fix) for item in possible_issues][:3]
@@ -145,6 +162,7 @@ def _normalize_result_payload(payload: Any) -> dict[str, Any]:
         normalized_issues = [
             {
                 "title": str(title),
+                "location": str(payload.get("location") or payload.get("错误位置") or "请重点检查核心逻辑所在的判断分支。"),
                 "evidence": str(evidence),
                 "explanation": str(overall),
                 "suggested_fix": str(fix),
@@ -158,6 +176,7 @@ def _normalize_result_payload(payload: Any) -> dict[str, Any]:
         "possible_issues": normalized_issues,
         "teacher_talking_points": _as_string_list(payload.get("teacher_talking_points")) or [str(fix)],
         "next_step_checks": _as_string_list(payload.get("next_step_checks")),
+        "correct_program": str(correct_program),
     }
 
 
@@ -166,12 +185,14 @@ def _normalize_issue(item: Any, fallback_overall: str, fallback_fix: str) -> dic
         text = str(item)
         return {
             "title": "可能的问题",
+            "location": "请重点检查相关逻辑块。",
             "evidence": text,
             "explanation": text,
             "suggested_fix": str(fallback_fix),
         }
     return {
         "title": str(item.get("title") or "可能的问题"),
+        "location": str(item.get("location") or item.get("错误位置") or "请重点检查相关逻辑块。"),
         "evidence": str(item.get("evidence") or fallback_overall),
         "explanation": str(item.get("explanation") or fallback_overall),
         "suggested_fix": str(item.get("suggested_fix") or fallback_fix),

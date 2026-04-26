@@ -8,7 +8,17 @@
         <p class="eyebrow">提交详情</p>
         <h1>{{ submission.student_name }}</h1>
       </div>
-      <a class="text-link" href="{{ url_for('admin.submission_list') }}">返回列表</a>
+      <div class="panel-actions">
+        {% if submission.diagnosis_status != "success" %}
+          <form method="post" action="{{ url_for('admin.generate_diagnosis', public_id=submission.public_id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="primary-button" type="submit">
+              {% if submission.diagnosis_status == "failed" %}重新生成 AI 诊断{% else %}生成 AI 诊断{% endif %}
+            </button>
+          </form>
+        {% endif %}
+        <a class="text-link" href="{{ url_for('admin.submission_list') }}">返回列表</a>
+      </div>
     </div>
     <dl class="meta-grid">
       <div>
@@ -74,41 +84,59 @@
     {% if submission.latest_diagnosis_run %}
       {% if submission.latest_diagnosis_run.status == "success" %}
         {% set result = submission.latest_diagnosis_run.structured_result_json %}
-        <div class="diagnosis-summary">
-          <h2>{{ result.overall_assessment }}</h2>
-          <p>置信度：{{ result.confidence }}</p>
-        </div>
-        {% if result.missing_context %}
-          <div class="tag-list">
-            {% for item in result.missing_context %}
-              <span class="tag">{{ item }}</span>
+        <div class="diagnosis-layout">
+          <div class="diagnosis-main">
+            <div class="diagnosis-summary">
+              <h2>{{ result.overall_assessment }}</h2>
+              <p>置信度：{{ result.confidence }}</p>
+            </div>
+            <section class="note-block">
+              <h3>诊断原因与可能位置</h3>
+            </section>
+            {% if result.missing_context %}
+              <div class="tag-list">
+                {% for item in result.missing_context %}
+                  <span class="tag">{{ item }}</span>
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% for issue in result.possible_issues %}
+              <section class="issue-card">
+                <h3>{{ loop.index }}. {{ issue.title }}</h3>
+                <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
+                <p><strong>证据：</strong>{{ issue.evidence }}</p>
+                <p><strong>原因：</strong>{{ issue.explanation }}</p>
+                <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+              </section>
             {% endfor %}
+            {% if result.teacher_talking_points %}
+              <section class="note-block">
+                <h3>老师可直接说的话</h3>
+                <ul>
+                  {% for item in result.teacher_talking_points %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              </section>
+            {% endif %}
+            {% if result.next_step_checks %}
+              <section class="note-block">
+                <h3>下一步检查</h3>
+                <ul>
+                  {% for item in result.next_step_checks %}
+                    <li>{{ item }}</li>
+                  {% endfor %}
+                </ul>
+              </section>
+            {% endif %}
           </div>
-        {% endif %}
-        {% for issue in result.possible_issues %}
-          <section class="issue-card">
-            <h3>{{ loop.index }}. {{ issue.title }}</h3>
-            <p><strong>证据：</strong>{{ issue.evidence }}</p>
-            <p><strong>原因：</strong>{{ issue.explanation }}</p>
-            <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
-          </section>
-        {% endfor %}
-        <section class="note-block">
-          <h3>老师可直接说的话</h3>
-          <ul>
-            {% for item in result.teacher_talking_points %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </section>
-        <section class="note-block">
-          <h3>下一步检查</h3>
-          <ul>
-            {% for item in result.next_step_checks %}
-              <li>{{ item }}</li>
-            {% endfor %}
-          </ul>
-        </section>
+          <aside class="diagnosis-side">
+            <section class="note-block">
+              <h3>正确的完整程序</h3>
+              <pre class="code-block"><code>{{ result.correct_program or "模型本次未返回完整程序。" }}</code></pre>
+            </section>
+          </aside>
+        </div>
       {% else %}
         <p class="empty-state">{{ submission.latest_diagnosis_run.error_message or "诊断尚未成功。" }}</p>
       {% endif %}
@@ -118,4 +146,3 @@
   </article>
 </section>
 {% endblock %}
-

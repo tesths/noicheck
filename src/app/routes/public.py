@@ -4,10 +4,9 @@ from flask import Blueprint, current_app, flash, redirect, render_template, requ
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
-from ..models import DiagnosisRun, ProblemSnapshot, Submission
-from ..services.ai import DeepSeekDiagnosisService, DiagnosisPayload, DiagnosisServiceError, PROMPT_VERSION
+from ..models import Submission
 from ..services.auth import hash_client_ip
-from ..services.problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError, normalize_openjudge_url
+from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
 
 public_bp = Blueprint("public", __name__)
 
@@ -92,96 +91,6 @@ def submit():
         flash("保存提交记录时失败，请稍后再试。", "error")
         return render_template("submit.html", form_data=form_data), 500
 
-    fetcher = OpenJudgeProblemFetcher(timeout=current_app.config["OPENJUDGE_REQUEST_TIMEOUT"])
-    try:
-        problem = fetcher.fetch(normalized_problem_url)
-        submission.problem_url = problem.normalized_url
-        submission.problem_path = problem.problem_path
-        submission.problem_title = problem.title
-        submission.fetch_status = "success"
-        db.session.add(
-            ProblemSnapshot(
-                submission=submission,
-                normalized_url=problem.normalized_url,
-                title=problem.title,
-                description_text=problem.description_text,
-                input_text=problem.input_text,
-                output_text=problem.output_text,
-                sample_input_text=problem.sample_input_text,
-                sample_output_text=problem.sample_output_text,
-                source_text=problem.source_text,
-                raw_excerpt=problem.raw_excerpt,
-            )
-        )
-    except ProblemFetchError as exc:
-        submission.fetch_status = "failed"
-        db.session.add(
-            ProblemSnapshot(
-                submission=submission,
-                normalized_url=normalized_problem_url,
-                fetch_error=str(exc),
-            )
-        )
-
-    try:
-        db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash("保存题面抓取结果时失败，请稍后再试。", "error")
-        return render_template("submit.html", form_data=form_data), 500
-
-    diagnosis_service = DeepSeekDiagnosisService(
-        api_key=current_app.config["DEEPSEEK_API_KEY"],
-        base_url=current_app.config["DEEPSEEK_BASE_URL"],
-        model_name=current_app.config["DEEPSEEK_MODEL"],
-    )
-    try:
-        submission.diagnosis_status = "running"
-        db.session.commit()
-        snapshot = submission.problem_snapshot
-        diagnosis = diagnosis_service.diagnose(
-            DiagnosisPayload(
-                student_name=submission.student_name,
-                problem_url=submission.problem_url,
-                problem_title=submission.problem_title,
-                description_text=snapshot.description_text if snapshot else None,
-                input_text=snapshot.input_text if snapshot else None,
-                output_text=snapshot.output_text if snapshot else None,
-                sample_input_text=snapshot.sample_input_text if snapshot else None,
-                sample_output_text=snapshot.sample_output_text if snapshot else None,
-                code_text=submission.code_text,
-            )
-        )
-        submission.diagnosis_status = "success"
-        db.session.add(
-            DiagnosisRun(
-                submission=submission,
-                model_name=diagnosis.model_name,
-                prompt_version=PROMPT_VERSION,
-                status="success",
-                structured_result_json=diagnosis.result.model_dump(),
-                summary_text=diagnosis.result.overall_assessment,
-                latency_ms=diagnosis.latency_ms,
-            )
-        )
-    except DiagnosisServiceError as exc:
-        submission.diagnosis_status = "failed"
-        db.session.add(
-            DiagnosisRun(
-                submission=submission,
-                model_name=current_app.config["DEEPSEEK_MODEL"],
-                prompt_version=PROMPT_VERSION,
-                status="failed",
-                error_message=str(exc),
-            )
-        )
-
-    try:
-        db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash("保存诊断结果时失败，请稍后再试。", "error")
-        return render_template("submit.html", form_data=form_data), 500
     return redirect(url_for("public.submit_success", public_id=submission.public_id))
 
 

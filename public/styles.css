@@ -228,6 +228,13 @@ textarea {
   margin-bottom: 18px;
 }
 
+.panel-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .table-shell {
   overflow-x: auto;
 }
@@ -282,6 +289,17 @@ th {
   grid-column: 1 / -1;
 }
 
+.diagnosis-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.95fr);
+  gap: 24px;
+}
+
+.diagnosis-side .code-block {
+  max-height: 720px;
+  overflow: auto;
+}
+
 .meta-grid,
 .content-list {
   display: grid;
@@ -330,6 +348,7 @@ th {
 @media (max-width: 900px) {
   .hero-card,
   .detail-grid,
+  .diagnosis-layout,
   .meta-grid,
   .content-list {
     grid-template-columns: 1fr;
@@ -340,4 +359,3 @@ th {
     flex-direction: column;
   }
 }
-

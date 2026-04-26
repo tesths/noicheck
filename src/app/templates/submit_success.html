@@ -4,7 +4,7 @@
 <section class="panel success-panel">
   <p class="eyebrow">提交成功</p>
   <h1>{{ submission.student_name }}</h1>
-  <p>你的代码已经提交给老师后台。</p>
+  <p>你的代码已经提交给老师后台。老师会在后台抓取题面并生成 AI 诊断，学生端不会再等待这些耗时步骤。</p>
   <dl class="meta-grid">
     <div>
       <dt>题目</dt>
@@ -26,4 +26,3 @@
   <a class="text-link" href="{{ url_for('public.submit') }}">继续提交</a>
 </section>
 {% endblock %}
-
