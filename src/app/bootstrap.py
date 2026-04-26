@@ -29,9 +29,6 @@ def validate_runtime_config(app: Flask) -> None:
 
 
 def bootstrap_app(app: Flask) -> None:
-    if not app.config.get("BOOTSTRAP_ON_STARTUP"):
-        return
-
     try:
         db.create_all()
         _repair_legacy_schema(app)
@@ -39,6 +36,9 @@ def bootstrap_app(app: Flask) -> None:
         db.session.rollback()
         app.logger.exception("启动 bootstrap 建表或修复旧表失败")
         app.config["BOOTSTRAP_LAST_ERROR"] = f"建表或修复旧表失败：{exc}"
+        return
+
+    if not app.config.get("BOOTSTRAP_ON_STARTUP"):
         return
 
     username = str(app.config.get("ADMIN_INIT_USERNAME", "")).strip()
@@ -86,7 +86,12 @@ def _repair_legacy_schema(app: Flask) -> None:
         for column_name, column_type in column_definitions.items():
             if column_name in existing_columns:
                 continue
-            connection.execute(text(f"ALTER TABLE submissions ADD COLUMN {column_name} {column_type}"))
+            if dialect_name == "postgresql":
+                connection.execute(
+                    text(f"ALTER TABLE submissions ADD COLUMN IF NOT EXISTS {column_name} {column_type}")
+                )
+            else:
+                connection.execute(text(f"ALTER TABLE submissions ADD COLUMN {column_name} {column_type}"))
 
         rows_missing_public_id = connection.execute(
             text("SELECT id FROM submissions WHERE public_id IS NULL OR public_id = ''")

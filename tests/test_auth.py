@@ -173,3 +173,52 @@ def test_bootstrap_repairs_legacy_submissions_schema(tmp_path):
         db.session.add(new_submission)
         db.session.commit()
         assert new_submission.public_id
+
+
+def test_legacy_schema_is_repaired_even_when_admin_bootstrap_is_disabled(tmp_path):
+    database_path = tmp_path / "legacy-no-admin.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE submissions (
+            id INTEGER PRIMARY KEY,
+            student_name VARCHAR(80) NOT NULL,
+            problem_url VARCHAR(500) NOT NULL,
+            code_text TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    class BootstrapConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+
+    app = create_app(BootstrapConfig)
+    with app.app_context():
+        repaired_submission = Submission(
+            student_name="补列后学生",
+            problem_url="http://noi.openjudge.cn/ch0107/03/",
+            code_text="int main() { return 0; }",
+            language="cpp",
+            fetch_status="pending",
+            diagnosis_status="pending",
+        )
+        db.session.add(repaired_submission)
+        db.session.commit()
+        assert repaired_submission.public_id
+        assert AdminUser.query.count() == 0
