@@ -1,11 +1,10 @@
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
 from ..models import Submission
 from ..services.auth import authenticate_admin, login_admin
-from ..services.queue import QueueServiceError, enqueue_submission
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -57,7 +56,7 @@ def submission_detail(public_id: str):
 def generate_diagnosis(public_id: str):
     submission = Submission.query.filter_by(public_id=public_id).first_or_404()
     if submission.diagnosis_status == "running":
-        flash("该提交已经在后台分析中。", "success")
+        flash("该提交已经在后台处理中。", "success")
         return redirect(url_for("admin.submission_detail", public_id=public_id))
 
     try:
@@ -66,13 +65,10 @@ def generate_diagnosis(public_id: str):
             if submission.problem_snapshot is not None:
                 submission.problem_snapshot.fetch_error = None
         submission.diagnosis_status = "pending"
-        db.session.flush()
-        enqueue_submission(submission.public_id)
         db.session.commit()
-        flash("已加入后台分析队列。", "success")
-    except (QueueServiceError, SQLAlchemyError) as exc:
+        flash("已重新排队等待计划任务处理。", "success")
+    except SQLAlchemyError:
         db.session.rollback()
-        current_app.logger.exception("加入后台分析队列失败")
-        flash(f"加入后台分析队列失败：{exc}", "error")
+        flash("更新待处理状态失败，请稍后再试。", "error")
 
     return redirect(url_for("admin.submission_detail", public_id=public_id))

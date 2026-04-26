@@ -10,10 +10,27 @@ from .ai import DeepSeekDiagnosisService, DiagnosisPayload, DiagnosisServiceErro
 from .problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError
 
 
-def process_submission(public_id: str) -> bool:
+def process_pending_submissions(limit: int) -> dict[str, int]:
+    statement = (
+        select(Submission.public_id)
+        .where(Submission.diagnosis_status == "pending")
+        .order_by(Submission.created_at.asc(), Submission.id.asc())
+        .limit(max(limit, 0))
+    )
+    public_ids = list(db.session.execute(statement).scalars())
+    summary = {"selected": len(public_ids), "processed": 0, "failed": 0, "skipped": 0}
+
+    for public_id in public_ids:
+        outcome = process_submission(public_id)
+        summary[outcome] += 1
+
+    return summary
+
+
+def process_submission(public_id: str) -> str:
     submission = _claim_submission(public_id)
     if submission is None:
-        return False
+        return "skipped"
 
     if _needs_problem_fetch(submission):
         try:
@@ -21,28 +38,24 @@ def process_submission(public_id: str) -> bool:
         except ProblemFetchError as exc:
             db.session.rollback()
             _mark_fetch_failure(public_id, str(exc))
-            return False
+            return "failed"
         except SQLAlchemyError as exc:
             db.session.rollback()
             _mark_diagnosis_failure(public_id, str(exc))
-            return False
+            return "failed"
 
     try:
         _run_diagnosis(public_id)
     except (DiagnosisServiceError, SQLAlchemyError) as exc:
         db.session.rollback()
         _mark_diagnosis_failure(public_id, str(exc))
-        return False
+        return "failed"
 
-    return True
+    return "processed"
 
 
 def _claim_submission(public_id: str) -> Submission | None:
-    statement = (
-        select(Submission)
-        .where(Submission.public_id == public_id)
-        .with_for_update()
-    )
+    statement = select(Submission).where(Submission.public_id == public_id).with_for_update()
     submission = db.session.execute(statement).scalar_one_or_none()
     if submission is None:
         db.session.rollback()
@@ -145,7 +158,7 @@ def _mark_fetch_failure(public_id: str, error_message: str) -> None:
     db.session.add(
         DiagnosisRun(
             submission=submission,
-            model_name="fetch-only",
+            model_name=current_app.config["DEEPSEEK_MODEL"],
             prompt_version=PROMPT_VERSION,
             status="failed",
             error_message=f"抓取题面失败：{error_message}",

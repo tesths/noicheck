@@ -9,7 +9,7 @@ from ..extensions import db
 from ..models import Submission
 from ..services.auth import hash_client_ip
 from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
-from ..services.queue import QueueServiceError, enqueue_submission
+from ..services.submission_pipeline import process_pending_submissions
 
 public_bp = Blueprint("public", __name__)
 
@@ -167,13 +167,17 @@ def _persist_submission(submission: Submission) -> Submission:
         return _persist_submission_with_explicit_id(submission)
 
 
-def _delete_submission_best_effort(submission: Submission) -> None:
-    try:
-        db.session.delete(submission)
-        db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
-        current_app.logger.exception("加入后台队列失败后，回滚提交记录也失败")
+def _verify_cron_request() -> tuple[dict[str, object], int] | None:
+    secret = str(current_app.config.get("CRON_SECRET", "")).strip()
+    if not secret:
+        current_app.logger.error("CRON_SECRET 未配置，拒绝执行计划任务")
+        return {"ok": False, "error": "CRON_SECRET 未配置。"}, 503
+
+    authorization = request.headers.get("Authorization", "")
+    if authorization != f"Bearer {secret}":
+        return {"ok": False, "error": "Unauthorized"}, 401
+
+    return None
 
 
 @public_bp.get("/")
@@ -221,14 +225,6 @@ def submit():
         flash("保存提交记录时失败，请稍后再试。", "error")
         return render_template("submit.html", form_data=form_data), 500
 
-    try:
-        enqueue_submission(submission.public_id)
-    except QueueServiceError:
-        current_app.logger.exception("提交记录已保存，但加入后台队列失败")
-        _delete_submission_best_effort(submission)
-        flash("系统暂时无法加入后台分析队列，请稍后重试。", "error")
-        return render_template("submit.html", form_data=form_data), 503
-
     return redirect(url_for("public.submit_success", public_id=submission.public_id))
 
 
@@ -236,3 +232,14 @@ def submit():
 def submit_success(public_id: str):
     submission = Submission.query.filter_by(public_id=public_id).first_or_404()
     return render_template("submit_success.html", submission=submission)
+
+
+@public_bp.get("/internal/cron/process-submissions")
+def process_submissions_cron():
+    auth_error = _verify_cron_request()
+    if auth_error is not None:
+        return auth_error
+
+    summary = process_pending_submissions(int(current_app.config.get("CRON_BATCH_SIZE", 5)))
+    summary["ok"] = True
+    return summary, 200

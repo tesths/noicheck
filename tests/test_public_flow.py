@@ -7,14 +7,7 @@ from src.app.services.auth import hash_password
 from src.app.services.submission_pipeline import process_submission
 
 
-def test_submit_persists_submission_and_enqueues_background_job(app, client, monkeypatch):
-    enqueued_public_ids = []
-
-    def fake_enqueue(public_id):
-        enqueued_public_ids.append(public_id)
-
-    monkeypatch.setattr("src.app.routes.public.enqueue_submission", fake_enqueue)
-
+def test_submit_persists_submission_and_marks_diagnosis_pending(app, client, monkeypatch):
     response = client.post(
         "/submit",
         data={
@@ -34,7 +27,6 @@ def test_submit_persists_submission_and_enqueues_background_job(app, client, mon
         assert submission.fetch_status == "pending"
         assert submission.diagnosis_status == "pending"
         assert submission.latest_diagnosis_run is None
-        assert enqueued_public_ids == [submission.public_id]
 
 
 def test_stylesheet_is_served(client):
@@ -103,24 +95,24 @@ def test_admin_can_login_and_view_submission(app, client):
     assert "统计数字字符个数".encode() in detail_response.data
 
 
-def test_admin_can_requeue_diagnosis(app, client, monkeypatch):
-    enqueued_public_ids = []
-
-    def fake_enqueue(public_id):
-        enqueued_public_ids.append(public_id)
-
-    monkeypatch.setattr("src.app.routes.admin.enqueue_submission", fake_enqueue)
-
+def test_admin_requeues_submission_for_cron_processing(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         submission = Submission(
             student_name="小明",
             problem_url="http://noi.openjudge.cn/ch0107/01/",
             code_text="int main() { return 0; }",
-            fetch_status="success",
+            fetch_status="failed",
             diagnosis_status="failed",
         )
-        db.session.add_all([admin, submission])
+        from src.app.models import ProblemSnapshot
+
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            fetch_error="临时抓取失败",
+        )
+        db.session.add_all([admin, submission, snapshot])
         db.session.commit()
         public_id = submission.public_id
 
@@ -145,14 +137,17 @@ def test_admin_can_requeue_diagnosis(app, client, monkeypatch):
     assert response.status_code == 302
 
     with app.app_context():
-        submission = Submission.query.filter_by(public_id=public_id).first()
-        assert submission.fetch_status == "success"
+        submission = Submission.query.filter_by(public_id=public_id).one()
+        assert submission.fetch_status == "pending"
         assert submission.diagnosis_status == "pending"
+        assert submission.problem_snapshot.fetch_error is None
 
-    assert enqueued_public_ids == [public_id]
+    detail_after = client.get(f"/admin/submissions/{public_id}")
+    assert detail_after.status_code == 200
+    assert "重新排队等待计划任务".encode() in detail_after.data
 
 
-def test_process_submission_fetches_problem_and_generates_diagnosis(app, monkeypatch):
+def test_cron_route_processes_pending_submission(app, client, monkeypatch):
     def fake_fetch(self, url):
         return ProblemContent(
             normalized_url="http://noi.openjudge.cn/ch0107/01/",
@@ -208,8 +203,16 @@ def test_process_submission_fetches_problem_and_generates_diagnosis(app, monkeyp
         db.session.commit()
         public_id = submission.public_id
 
+    response = client.get(
+        "/internal/cron/process-submissions",
+        headers={"Authorization": "Bearer test-cron-secret"},
+    )
+
+    assert response.status_code == 200
+    assert response.json["processed"] == 1
+    assert response.json["failed"] == 0
+
     with app.app_context():
-        process_submission(public_id)
         submission = Submission.query.filter_by(public_id=public_id).one()
         assert submission.fetch_status == "success"
         assert submission.diagnosis_status == "success"
