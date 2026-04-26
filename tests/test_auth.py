@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import sqlalchemy.exc
+
 from src.app import create_app
 from src.app.extensions import db
 from src.app.models import AdminUser
@@ -84,3 +86,28 @@ def test_bootstrap_updates_existing_admin_password(tmp_path):
         second_admin = AdminUser.query.filter_by(username="bootstrap-admin").one()
         assert verify_password(second_admin.password_hash, "second-pass")
         db.session.remove()
+
+
+def test_bootstrap_db_failure_does_not_crash_app(monkeypatch):
+    class BootstrapConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = "bootstrap-admin"
+        ADMIN_INIT_PASSWORD = "bootstrap-pass"
+        BOOTSTRAP_ON_STARTUP = True
+        REQUIRE_PRODUCTION_ENV = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+
+    monkeypatch.setattr("src.app.bootstrap.db.create_all", lambda: (_ for _ in ()).throw(sqlalchemy.exc.OperationalError("stmt", {}, Exception("db down"))))
+
+    app = create_app(BootstrapConfig)
+    with app.app_context():
+        assert "建表失败" in app.config["BOOTSTRAP_LAST_ERROR"]

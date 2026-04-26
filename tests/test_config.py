@@ -28,3 +28,23 @@ def test_create_app_rejects_missing_production_settings():
 
     with pytest.raises(RuntimeError, match="生产环境配置不完整"):
         create_app(ProductionConfig)
+
+
+def test_create_app_allows_missing_admin_and_deepseek_in_production_if_core_env_is_valid():
+    class ProductionConfig:
+        TESTING = True
+        SECRET_KEY = "very-secure-secret-key"
+        SQLALCHEMY_DATABASE_URI = "postgresql+psycopg://user:pass@localhost:5432/db"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = ""
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = True
+
+    app = create_app(ProductionConfig)
+    assert app is not None
