@@ -1,6 +1,7 @@
 import json
 import time
 from dataclasses import dataclass
+from typing import Any
 
 from openai import OpenAI
 
@@ -86,7 +87,7 @@ class DeepSeekDiagnosisService:
             raise DiagnosisServiceError("模型返回的内容不是合法 JSON。") from exc
 
         try:
-            result = DiagnosisResult.model_validate(parsed)
+            result = DiagnosisResult.model_validate(_normalize_result_payload(parsed))
         except Exception as exc:
             raise DiagnosisServiceError("模型返回 JSON 结构不符合预期。") from exc
 
@@ -114,3 +115,82 @@ class DeepSeekDiagnosisService:
                 payload.code_text,
             ]
         )
+
+
+def _normalize_result_payload(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise TypeError("diagnosis payload must be a JSON object")
+
+    overall = (
+        payload.get("overall_assessment")
+        or payload.get("错误")
+        or payload.get("结论")
+        or payload.get("总结")
+        or payload.get("analysis")
+        or "程序存在需要检查的问题。"
+    )
+    fix = (
+        payload.get("修改建议")
+        or payload.get("建议")
+        or payload.get("recommended_fix")
+        or payload.get("fix")
+        or "请根据题目要求重新检查代码逻辑。"
+    )
+    evidence = payload.get("证据") or payload.get("原因") or overall
+    title = payload.get("title") or payload.get("问题标题") or "可能的主要问题"
+    possible_issues = payload.get("possible_issues")
+    if isinstance(possible_issues, list):
+        normalized_issues = [_normalize_issue(item, overall, fix) for item in possible_issues][:3]
+    else:
+        normalized_issues = [
+            {
+                "title": str(title),
+                "evidence": str(evidence),
+                "explanation": str(overall),
+                "suggested_fix": str(fix),
+            }
+        ]
+
+    return {
+        "overall_assessment": str(overall),
+        "confidence": _normalize_confidence(payload.get("confidence")),
+        "missing_context": _as_string_list(payload.get("missing_context")),
+        "possible_issues": normalized_issues,
+        "teacher_talking_points": _as_string_list(payload.get("teacher_talking_points")) or [str(fix)],
+        "next_step_checks": _as_string_list(payload.get("next_step_checks")),
+    }
+
+
+def _normalize_issue(item: Any, fallback_overall: str, fallback_fix: str) -> dict[str, str]:
+    if not isinstance(item, dict):
+        text = str(item)
+        return {
+            "title": "可能的问题",
+            "evidence": text,
+            "explanation": text,
+            "suggested_fix": str(fallback_fix),
+        }
+    return {
+        "title": str(item.get("title") or "可能的问题"),
+        "evidence": str(item.get("evidence") or fallback_overall),
+        "explanation": str(item.get("explanation") or fallback_overall),
+        "suggested_fix": str(item.get("suggested_fix") or fallback_fix),
+    }
+
+
+def _as_string_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item).strip()]
+    if isinstance(value, tuple):
+        return [str(item) for item in value if str(item).strip()]
+    text = str(value).strip()
+    return [text] if text else []
+
+
+def _normalize_confidence(value: Any) -> str:
+    text = str(value).strip().lower() if value is not None else ""
+    if text in {"low", "medium", "high"}:
+        return text
+    return "medium"

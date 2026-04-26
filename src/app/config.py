@@ -10,6 +10,10 @@ def _default_sqlite_uri() -> str:
 def _normalize_database_url(url: str | None) -> str:
     if not url:
         return _default_sqlite_uri()
+    if url.startswith("sqlite:///") and not url.startswith("sqlite:////") and url != "sqlite:///:memory:":
+        relative_path = url.removeprefix("sqlite:///")
+        absolute_path = (Path(__file__).resolve().parents[2] / relative_path).resolve()
+        return f"sqlite:///{absolute_path}"
     if url.startswith("postgres://"):
         return url.replace("postgres://", "postgresql+psycopg://", 1)
     if url.startswith("postgresql://"):
@@ -21,6 +25,7 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     SQLALCHEMY_DATABASE_URI = _normalize_database_url(os.getenv("DATABASE_URL"))
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"timeout": 30}} if SQLALCHEMY_DATABASE_URI.startswith("sqlite") else {}
 
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"

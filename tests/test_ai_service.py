@@ -67,3 +67,99 @@ def test_deepseek_service_uses_simple_chat_completion():
     assert "extra_body" not in call
     assert "题目描述" in call["messages"][1]["content"]
     assert result.result.possible_issues[0].title == "条件判断遗漏"
+
+
+def test_deepseek_service_accepts_loose_chinese_json_shape():
+    client = FakeClient()
+    client.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "错误": "程序没有删除后缀，只是直接输出原单词。",
+                            "修改建议": "补上对 er、ly、ing 后缀的判断和截断。",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            )
+        ]
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.diagnose(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/20/",
+            problem_title="20:删除单词后缀",
+            description_text="按要求删除单词后缀。",
+            input_text="一个单词。",
+            output_text="删除后缀后的结果。",
+            sample_input_text="refer",
+            sample_output_text="ref",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    assert result.result.overall_assessment == "程序没有删除后缀，只是直接输出原单词。"
+    assert result.result.possible_issues[0].suggested_fix == "补上对 er、ly、ing 后缀的判断和截断。"
+
+
+def test_deepseek_service_coerces_scalar_list_fields():
+    client = FakeClient()
+    client.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "overall_assessment": "程序没有实现后缀删除。",
+                            "confidence": "high",
+                            "missing_context": "缺少真实运行结果。",
+                            "possible_issues": [
+                                {
+                                    "title": "核心逻辑缺失",
+                                    "evidence": "代码直接输出输入值。",
+                                    "explanation": "没有判断 er、ly、ing 后缀。",
+                                    "suggested_fix": "补上字符串后缀判断。",
+                                }
+                            ],
+                            "teacher_talking_points": "先让学生自己说出需要删除哪些后缀。",
+                            "next_step_checks": "用 referer 和 happily 再测一次。",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            )
+        ]
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.diagnose(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/20/",
+            problem_title="20:删除单词后缀",
+            description_text="按要求删除单词后缀。",
+            input_text="一个单词。",
+            output_text="删除后缀后的结果。",
+            sample_input_text="refer",
+            sample_output_text="ref",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    assert result.result.missing_context == ["缺少真实运行结果。"]
+    assert result.result.teacher_talking_points == ["先让学生自己说出需要删除哪些后缀。"]
+    assert result.result.next_step_checks == ["用 referer 和 happily 再测一次。"]

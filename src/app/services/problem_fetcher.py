@@ -35,7 +35,8 @@ def normalize_openjudge_url(url: str) -> str:
     if not path:
         raise ProblemFetchError("题目链接缺少路径。")
 
-    return f"https://noi.openjudge.cn{path}/"
+    # OpenJudge 的 HTTPS 链路不稳定，本地和线上都优先走用户实际提供的 HTTP 入口。
+    return f"http://noi.openjudge.cn{path}/"
 
 
 def extract_problem_path(normalized_url: str) -> str:

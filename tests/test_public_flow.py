@@ -9,7 +9,7 @@ from src.app.services.problem_fetcher import ProblemContent
 def test_submit_persists_submission_and_diagnosis(app, client, monkeypatch):
     def fake_fetch(self, url):
         return ProblemContent(
-            normalized_url="https://noi.openjudge.cn/ch0107/01/",
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
             problem_path="ch0107/01",
             title="01:统计数字字符个数",
             description_text="输入一行字符，统计数字字符个数。",
@@ -93,7 +93,7 @@ def test_admin_can_login_and_view_submission(app, client):
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         submission = Submission(
             student_name="小明",
-            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
             code_text="int main() { return 0; }",
             problem_title="01:统计数字字符个数",
             problem_path="ch0107/01",

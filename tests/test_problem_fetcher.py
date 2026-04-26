@@ -2,7 +2,7 @@ from src.app.services.problem_fetcher import ProblemFetchError, normalize_openju
 
 
 def test_normalize_openjudge_url_accepts_expected_domain():
-    assert normalize_openjudge_url("http://noi.openjudge.cn/ch0107/01/") == "https://noi.openjudge.cn/ch0107/01/"
+    assert normalize_openjudge_url("http://noi.openjudge.cn/ch0107/01/") == "http://noi.openjudge.cn/ch0107/01/"
 
 
 def test_normalize_openjudge_url_rejects_other_domain():
@@ -33,7 +33,7 @@ def test_parse_problem_html_extracts_core_sections():
     </dl>
     """
 
-    result = parse_problem_html("https://noi.openjudge.cn/ch0107/01/", html)
+    result = parse_problem_html("http://noi.openjudge.cn/ch0107/01/", html)
 
     assert result.problem_path == "ch0107/01"
     assert result.title == "01:统计数字字符个数"

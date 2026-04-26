@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
 from ..models import DiagnosisRun, ProblemSnapshot, Submission
@@ -83,8 +84,13 @@ def submit():
         fetch_status="pending",
         diagnosis_status="pending",
     )
-    db.session.add(submission)
-    db.session.flush()
+    try:
+        db.session.add(submission)
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("保存提交记录时失败，请稍后再试。", "error")
+        return render_template("submit.html", form_data=form_data), 500
 
     fetcher = OpenJudgeProblemFetcher(timeout=current_app.config["OPENJUDGE_REQUEST_TIMEOUT"])
     try:
@@ -117,7 +123,12 @@ def submit():
             )
         )
 
-    db.session.flush()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("保存题面抓取结果时失败，请稍后再试。", "error")
+        return render_template("submit.html", form_data=form_data), 500
 
     diagnosis_service = DeepSeekDiagnosisService(
         api_key=current_app.config["DEEPSEEK_API_KEY"],
@@ -126,7 +137,7 @@ def submit():
     )
     try:
         submission.diagnosis_status = "running"
-        db.session.flush()
+        db.session.commit()
         snapshot = submission.problem_snapshot
         diagnosis = diagnosis_service.diagnose(
             DiagnosisPayload(
@@ -165,7 +176,12 @@ def submit():
             )
         )
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("保存诊断结果时失败，请稍后再试。", "error")
+        return render_template("submit.html", form_data=form_data), 500
     return redirect(url_for("public.submit_success", public_id=submission.public_id))
 
 
