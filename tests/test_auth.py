@@ -1,10 +1,11 @@
 from pathlib import Path
+import sqlite3
 
 import sqlalchemy.exc
 
 from src.app import create_app
 from src.app.extensions import db
-from src.app.models import AdminUser
+from src.app.models import AdminUser, Submission
 from src.app.services.auth import authenticate_admin, hash_client_ip, hash_password, verify_password
 
 
@@ -110,4 +111,65 @@ def test_bootstrap_db_failure_does_not_crash_app(monkeypatch):
 
     app = create_app(BootstrapConfig)
     with app.app_context():
-        assert "建表失败" in app.config["BOOTSTRAP_LAST_ERROR"]
+        assert "建表或修复旧表失败" in app.config["BOOTSTRAP_LAST_ERROR"]
+
+
+def test_bootstrap_repairs_legacy_submissions_schema(tmp_path):
+    database_path = tmp_path / "legacy.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE submissions (
+            id INTEGER PRIMARY KEY,
+            student_name VARCHAR(80) NOT NULL,
+            problem_url VARCHAR(500) NOT NULL,
+            code_text TEXT NOT NULL
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO submissions (student_name, problem_url, code_text)
+        VALUES ('旧数据学生', 'http://noi.openjudge.cn/ch0107/01/', 'int main() { return 0; }')
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    class BootstrapConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = True
+        REQUIRE_PRODUCTION_ENV = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+
+    app = create_app(BootstrapConfig)
+    with app.app_context():
+        legacy_submission = Submission.query.filter_by(student_name="旧数据学生").one()
+        assert legacy_submission.public_id
+        assert legacy_submission.problem_source == "openjudge"
+        assert legacy_submission.language == "cpp"
+        assert legacy_submission.fetch_status == "pending"
+        assert legacy_submission.diagnosis_status == "pending"
+
+        new_submission = Submission(
+            student_name="新学生",
+            problem_url="http://noi.openjudge.cn/ch0107/02/",
+            code_text="int main() { return 0; }",
+            language="cpp",
+            fetch_status="pending",
+            diagnosis_status="pending",
+        )
+        db.session.add(new_submission)
+        db.session.commit()
+        assert new_submission.public_id
