@@ -28,6 +28,13 @@ def test_submit_persists_submission_and_marks_diagnosis_pending(app, client, mon
         assert submission.latest_diagnosis_run is None
 
 
+def test_stylesheet_is_served(client):
+    response = client.get("/styles.css")
+
+    assert response.status_code == 200
+    assert b":root" in response.data
+
+
 def test_submit_rejects_invalid_url(client):
     response = client.post(
         "/submit",

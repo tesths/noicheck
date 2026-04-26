@@ -3,6 +3,10 @@
   "version": 2,
   "builds": [
     {
+      "src": "public/styles.css",
+      "use": "@vercel/static"
+    },
+    {
       "src": "src/index.py",
       "use": "@vercel/python"
     }
