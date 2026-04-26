@@ -7,7 +7,6 @@
       "maxDuration": 60
     },
     "api/queues/process-submission.js": {
-      "runtime": "@vercel/node",
       "maxDuration": 60,
       "experimentalTriggers": [
         {

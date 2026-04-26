@@ -6,3 +6,4 @@
 - [进行中] 落地 Vercel Queues 异步方案：Flask 负责落库与排队，Node consumer 触发后台抓题和 AI 诊断
 - [进行中] 补充 .env.example：生成可直接复制到 Vercel 的生产环境变量模板
 - [进行中] 修复 Vercel 部署冲突：移除 builds 与 functions 混用，切换到单一 functions 配置
+- [进行中] 修复 Vercel runtime 报错：移除 functions 中无效的官方 Node runtime 字段
