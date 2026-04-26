@@ -73,3 +73,8 @@ class Config:
     SUBMISSION_CODE_MAX_LENGTH = int(os.getenv("SUBMISSION_CODE_MAX_LENGTH", "20000"))
     RATE_LIMIT_MAX_SUBMISSIONS = int(os.getenv("RATE_LIMIT_MAX_SUBMISSIONS", "20"))
     RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "300"))
+    REDIS_URL = os.getenv("REDIS_URL", "").strip()
+    RQ_QUEUE_NAME = os.getenv("RQ_QUEUE_NAME", "submission-analysis").strip() or "submission-analysis"
+    WORKER_JOB_TIMEOUT = int(os.getenv("WORKER_JOB_TIMEOUT", "300"))
+    WORKER_RETRY_MAX = int(os.getenv("WORKER_RETRY_MAX", "2"))
+    WORKER_RETRY_INTERVAL = int(os.getenv("WORKER_RETRY_INTERVAL", "60"))

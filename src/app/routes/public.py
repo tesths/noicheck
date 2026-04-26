@@ -9,6 +9,7 @@ from ..extensions import db
 from ..models import Submission
 from ..services.auth import hash_client_ip
 from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
+from ..services.queue import QueueServiceError, enqueue_submission
 
 public_bp = Blueprint("public", __name__)
 
@@ -166,6 +167,15 @@ def _persist_submission(submission: Submission) -> Submission:
         return _persist_submission_with_explicit_id(submission)
 
 
+def _delete_submission_best_effort(submission: Submission) -> None:
+    try:
+        db.session.delete(submission)
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("加入后台队列失败后，回滚提交记录也失败")
+
+
 @public_bp.get("/")
 def home():
     return redirect(url_for("public.submit"))
@@ -210,6 +220,14 @@ def submit():
         db.session.rollback()
         flash("保存提交记录时失败，请稍后再试。", "error")
         return render_template("submit.html", form_data=form_data), 500
+
+    try:
+        enqueue_submission(submission.public_id)
+    except QueueServiceError:
+        current_app.logger.exception("提交记录已保存，但加入后台队列失败")
+        _delete_submission_best_effort(submission)
+        flash("系统暂时无法加入后台分析队列，请稍后重试。", "error")
+        return render_template("submit.html", form_data=form_data), 503
 
     return redirect(url_for("public.submit_success", public_id=submission.public_id))
 
