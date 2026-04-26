@@ -81,7 +81,8 @@ def _repair_legacy_schema(app: Flask) -> None:
     if "submissions" not in inspector.get_table_names():
         return
 
-    existing_columns = {column["name"] for column in inspector.get_columns("submissions")}
+    columns = inspector.get_columns("submissions")
+    existing_columns = {column["name"] for column in columns}
     dialect_name = db.engine.dialect.name
     timestamp_type = "TIMESTAMP WITH TIME ZONE" if dialect_name == "postgresql" else "DATETIME"
 
@@ -111,13 +112,28 @@ def _repair_legacy_schema(app: Flask) -> None:
             else:
                 connection.execute(text(f"ALTER TABLE submissions ADD COLUMN {column_name} {column_type}"))
 
-        rows_missing_public_id = connection.execute(
-            text("SELECT id FROM submissions WHERE public_id IS NULL OR public_id = ''")
+        if dialect_name == "postgresql":
+            _repair_postgresql_submission_id_sequence(connection, existing_columns)
+
+        rows_with_public_id = connection.execute(
+            text("SELECT id, public_id FROM submissions ORDER BY id")
         ).fetchall()
-        for row in rows_missing_public_id:
+        seen_public_ids: set[str] = set()
+        for row in rows_with_public_id:
+            public_id = str(row.public_id or "").strip()
+            if public_id and public_id not in seen_public_ids:
+                seen_public_ids.add(public_id)
+                continue
+
+            while True:
+                regenerated_public_id = _generate_public_id()
+                if regenerated_public_id not in seen_public_ids:
+                    seen_public_ids.add(regenerated_public_id)
+                    break
+
             connection.execute(
                 text("UPDATE submissions SET public_id = :public_id WHERE id = :id"),
-                {"public_id": _generate_public_id(), "id": row.id},
+                {"public_id": regenerated_public_id, "id": row.id},
             )
 
         defaults = {
@@ -154,3 +170,37 @@ def _repair_legacy_schema(app: Flask) -> None:
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_submissions_client_ip_hash ON submissions (client_ip_hash)")
         )
+
+
+def _repair_postgresql_submission_id_sequence(connection, existing_columns: set[str]) -> None:
+    if "id" not in existing_columns:
+        return
+
+    sequence_name = connection.execute(
+        text("SELECT pg_get_serial_sequence('submissions', 'id')")
+    ).scalar()
+
+    if not sequence_name:
+        connection.execute(text("CREATE SEQUENCE IF NOT EXISTS submissions_id_seq"))
+        connection.execute(text("ALTER SEQUENCE submissions_id_seq OWNED BY submissions.id"))
+        connection.execute(
+            text("ALTER TABLE submissions ALTER COLUMN id SET DEFAULT nextval('submissions_id_seq')")
+        )
+        sequence_name = "submissions_id_seq"
+
+    connection.execute(
+        text(
+            """
+            WITH sequence_state AS (
+                SELECT COALESCE(MAX(id), 0) AS max_id FROM submissions
+            )
+            SELECT setval(
+                CAST(:sequence_name AS regclass),
+                CASE WHEN max_id > 0 THEN max_id ELSE 1 END,
+                max_id > 0
+            )
+            FROM sequence_state
+            """
+        ),
+        {"sequence_name": sequence_name},
+    )

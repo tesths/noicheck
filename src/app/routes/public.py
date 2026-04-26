@@ -1,8 +1,10 @@
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
+from ..bootstrap import ensure_database_schema
 from ..extensions import db
 from ..models import Submission
 from ..services.auth import hash_client_ip
@@ -35,11 +37,63 @@ def _check_rate_limit(client_ip_hash: str | None) -> bool:
     window_start = datetime.now(timezone.utc) - timedelta(
         seconds=current_app.config["RATE_LIMIT_WINDOW_SECONDS"]
     )
-    recent_count = Submission.query.filter(
-        Submission.client_ip_hash == client_ip_hash,
-        Submission.created_at >= window_start,
-    ).count()
+    try:
+        recent_count = _count_recent_submissions(client_ip_hash, window_start)
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("查询提交频率失败，准备强制修复数据库后重试")
+        ensure_database_schema(current_app, force=True)
+        recent_count = _count_recent_submissions(client_ip_hash, window_start)
     return recent_count >= current_app.config["RATE_LIMIT_MAX_SUBMISSIONS"]
+
+
+def _count_recent_submissions(client_ip_hash: str, window_start: datetime) -> int:
+    statement = (
+        select(func.count(Submission.id))
+        .where(Submission.client_ip_hash == client_ip_hash)
+        .where(Submission.created_at >= window_start)
+    )
+    return int(db.session.execute(statement).scalar_one())
+
+
+def _build_submission(
+    *,
+    student_name: str,
+    problem_url: str,
+    code_text: str,
+    client_ip_hash: str | None,
+) -> Submission:
+    return Submission(
+        student_name=student_name,
+        problem_url=problem_url,
+        code_text=code_text,
+        language="cpp",
+        client_ip_hash=client_ip_hash,
+        fetch_status="pending",
+        diagnosis_status="pending",
+    )
+
+
+def _persist_submission(submission: Submission) -> Submission:
+    try:
+        db.session.add(submission)
+        db.session.commit()
+        return submission
+    except SQLAlchemyError:
+        db.session.rollback()
+        current_app.logger.exception("保存提交记录失败，准备强制修复数据库后重试")
+
+    ensure_database_schema(current_app, force=True)
+
+    retried_submission = _build_submission(
+        student_name=submission.student_name,
+        problem_url=submission.problem_url,
+        code_text=submission.code_text,
+        client_ip_hash=submission.client_ip_hash,
+    )
+    db.session.add(retried_submission)
+    db.session.commit()
+    return retried_submission
 
 
 @public_bp.get("/")
@@ -74,18 +128,14 @@ def submit():
         flash("提交过于频繁，请稍后再试。", "error")
         return render_template("submit.html", form_data=form_data), 429
 
-    submission = Submission(
+    submission = _build_submission(
         student_name=form_data["student_name"],
         problem_url=normalized_problem_url,
         code_text=form_data["code_text"],
-        language="cpp",
         client_ip_hash=client_ip_hash,
-        fetch_status="pending",
-        diagnosis_status="pending",
     )
     try:
-        db.session.add(submission)
-        db.session.commit()
+        submission = _persist_submission(submission)
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存提交记录时失败，请稍后再试。", "error")
