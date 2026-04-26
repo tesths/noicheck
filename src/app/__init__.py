@@ -12,7 +12,7 @@ from .services.auth import register_auth_commands
 
 def create_app(config_object: type[Config] | None = None) -> Flask:
     public_dir = Path(__file__).resolve().parents[2] / "public"
-    app = Flask(__name__, static_folder=str(public_dir), static_url_path="")
+    app = Flask(__name__, static_folder=str(public_dir), static_url_path="/public")
     app.config.from_object(config_object or Config)
     validate_runtime_config(app)
 

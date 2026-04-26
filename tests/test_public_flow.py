@@ -29,10 +29,17 @@ def test_submit_persists_submission_and_marks_diagnosis_pending(app, client, mon
 
 
 def test_stylesheet_is_served(client):
-    response = client.get("/styles.css")
+    response = client.get("/public/styles.css")
 
     assert response.status_code == 200
     assert b":root" in response.data
+
+
+def test_submit_page_references_public_stylesheet(client):
+    response = client.get("/submit")
+
+    assert response.status_code == 200
+    assert b'/public/styles.css' in response.data
 
 
 def test_submit_rejects_invalid_url(client):
