@@ -87,8 +87,9 @@
         <div class="diagnosis-layout">
           <div class="diagnosis-main">
             <div class="diagnosis-summary">
+              <p class="eyebrow">诊断摘要</p>
               <h2>{{ result.overall_assessment }}</h2>
-              <p>置信度：{{ result.confidence }}</p>
+              <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
             </div>
             <section class="note-block">
               <h3>诊断原因与可能位置</h3>
@@ -131,10 +132,11 @@
             {% endif %}
           </div>
           <aside class="diagnosis-side">
-            <section class="note-block">
+            <article class="panel diagnosis-program-panel">
+              <p class="eyebrow">参考程序</p>
               <h3>正确的完整程序</h3>
               <pre class="code-block"><code>{{ result.correct_program or "模型本次未返回完整程序。" }}</code></pre>
-            </section>
+            </article>
           </aside>
         </div>
       {% else %}
