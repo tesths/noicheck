@@ -61,11 +61,12 @@ class DeepSeekDiagnosisService:
                     {
                         "role": "system",
                         "content": (
-                            "你是一名面向编程老师的 C++ 错题诊断助手。"
-                            "你不能假装执行过代码，只能根据题面与源码推断。"
-                            "请输出严格 JSON，包含 overall_assessment, confidence, "
-                            "missing_context, possible_issues, teacher_talking_points, next_step_checks。"
-                            "possible_issues 最多 3 条，每条必须包含 title, evidence, explanation, suggested_fix。"
+                            "请根据题目和学生程序，帮老师检查程序可能错在哪里。"
+                            "不要假装运行过代码，只能根据题目和代码推断。"
+                            "请输出严格 JSON，字段固定为 "
+                            "overall_assessment, confidence, missing_context, "
+                            "possible_issues, teacher_talking_points, next_step_checks。"
+                            "possible_issues 最多 3 条，每条包含 title, evidence, explanation, suggested_fix。"
                         ),
                     },
                     {
@@ -97,17 +98,19 @@ class DeepSeekDiagnosisService:
         )
 
     def _build_user_prompt(self, payload: DiagnosisPayload) -> str:
-        problem_parts = [
-            f"题目链接：{payload.problem_url}",
-            f"题目标题：{payload.problem_title or '未知'}",
-            f"题目描述：{payload.description_text or '未抓取到'}",
-            f"输入格式：{payload.input_text or '未抓取到'}",
-            f"输出格式：{payload.output_text or '未抓取到'}",
-            f"样例输入：{payload.sample_input_text or '未抓取到'}",
-            f"样例输出：{payload.sample_output_text or '未抓取到'}",
-            f"学生姓名：{payload.student_name}",
-            "学生语言：C++",
-            "学生代码：",
-            payload.code_text,
-        ]
-        return "\n\n".join(problem_parts)
+        return "\n\n".join(
+            [
+                "请你根据下面的题目和程序，检查程序可能错误的地方，并给出老师可直接转述的修改建议。",
+                f"题目链接：{payload.problem_url}",
+                f"题目标题：{payload.problem_title or '未知'}",
+                f"题目描述：{payload.description_text or '未抓取到'}",
+                f"输入格式：{payload.input_text or '未抓取到'}",
+                f"输出格式：{payload.output_text or '未抓取到'}",
+                f"样例输入：{payload.sample_input_text or '未抓取到'}",
+                f"样例输出：{payload.sample_output_text or '未抓取到'}",
+                f"学生：{payload.student_name}",
+                "程序语言：C++",
+                "程序：",
+                payload.code_text,
+            ]
+        )
