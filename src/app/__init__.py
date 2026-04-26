@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from flask import Flask
+from flask import Flask, current_app, request
 
-from .bootstrap import bootstrap_app, validate_runtime_config
+from .bootstrap import bootstrap_app, ensure_database_schema, validate_runtime_config
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 from .routes.admin import admin_bp
@@ -27,5 +27,11 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
 
     with app.app_context():
         bootstrap_app(app)
+
+    @app.before_request
+    def _ensure_database_schema_ready() -> None:
+        if request.endpoint == "static":
+            return
+        ensure_database_schema(current_app)
 
     return app

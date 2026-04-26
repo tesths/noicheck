@@ -222,3 +222,57 @@ def test_legacy_schema_is_repaired_even_when_admin_bootstrap_is_disabled(tmp_pat
         db.session.commit()
         assert repaired_submission.public_id
         assert AdminUser.query.count() == 0
+
+
+def test_request_path_repairs_legacy_schema_when_startup_repair_was_skipped(tmp_path, monkeypatch):
+    database_path = tmp_path / "legacy-request.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE submissions (
+            id INTEGER PRIMARY KEY,
+            student_name VARCHAR(80) NOT NULL,
+            problem_url VARCHAR(500) NOT NULL,
+            code_text TEXT NOT NULL
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    class BootstrapConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+
+    monkeypatch.setattr("src.app.bootstrap.bootstrap_app", lambda app: None)
+
+    app = create_app(BootstrapConfig)
+    client = app.test_client()
+    response = client.get("/submit")
+    assert response.status_code == 200
+
+    with app.app_context():
+        repaired_submission = Submission(
+            student_name="请求后学生",
+            problem_url="http://noi.openjudge.cn/ch0107/04/",
+            code_text="int main() { return 0; }",
+            language="cpp",
+            fetch_status="pending",
+            diagnosis_status="pending",
+        )
+        db.session.add(repaired_submission)
+        db.session.commit()
+        assert repaired_submission.public_id

@@ -30,12 +30,8 @@ def validate_runtime_config(app: Flask) -> None:
 
 def bootstrap_app(app: Flask) -> None:
     try:
-        db.create_all()
-        _repair_legacy_schema(app)
-    except SQLAlchemyError as exc:
-        db.session.rollback()
-        app.logger.exception("启动 bootstrap 建表或修复旧表失败")
-        app.config["BOOTSTRAP_LAST_ERROR"] = f"建表或修复旧表失败：{exc}"
+        ensure_database_schema(app, force=True)
+    except SQLAlchemyError:
         return
 
     if not app.config.get("BOOTSTRAP_ON_STARTUP"):
@@ -59,6 +55,25 @@ def bootstrap_app(app: Flask) -> None:
         db.session.rollback()
         app.logger.exception("启动 bootstrap 初始化管理员失败")
         app.config["BOOTSTRAP_LAST_ERROR"] = f"初始化管理员失败：{exc}"
+
+
+def ensure_database_schema(app: Flask, force: bool = False) -> None:
+    state = app.extensions.setdefault("schema_repair_state", {"checked": False})
+    if state["checked"] and not force:
+        return
+
+    try:
+        db.create_all()
+        _repair_legacy_schema(app)
+    except SQLAlchemyError as exc:
+        db.session.rollback()
+        state["checked"] = False
+        app.logger.exception("启动或请求阶段建表/修复旧表失败")
+        app.config["BOOTSTRAP_LAST_ERROR"] = f"建表或修复旧表失败：{exc}"
+        raise
+
+    state["checked"] = True
+    app.config.pop("BOOTSTRAP_LAST_ERROR", None)
 
 
 def _repair_legacy_schema(app: Flask) -> None:
