@@ -1,12 +1,12 @@
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
-from ..models import DiagnosisRun, ProblemSnapshot, Submission
-from ..services.ai import DeepSeekDiagnosisService, DiagnosisPayload, DiagnosisServiceError, PROMPT_VERSION
+from ..models import Submission
 from ..services.auth import authenticate_admin, login_admin
-from ..services.problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError
+from ..services.job_queue import JobQueueError
+from ..services.jobs import enqueue_diagnosis_job
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -57,100 +57,14 @@ def submission_detail(public_id: str):
 @login_required
 def generate_diagnosis(public_id: str):
     submission = Submission.query.filter_by(public_id=public_id).first_or_404()
-    diagnosis_service = DeepSeekDiagnosisService(
-        api_key=current_app.config["DEEPSEEK_API_KEY"],
-        base_url=current_app.config["DEEPSEEK_BASE_URL"],
-        model_name=current_app.config["DEEPSEEK_MODEL"],
-    )
-
     try:
-        submission.diagnosis_status = "running"
-        db.session.commit()
-
-        snapshot = submission.problem_snapshot
-        if submission.fetch_status != "success":
-            fetcher = OpenJudgeProblemFetcher(timeout=float(current_app.config.get("OPENJUDGE_REQUEST_TIMEOUT", 10)))
-            try:
-                problem = fetcher.fetch(submission.problem_url)
-                submission.problem_url = problem.normalized_url
-                submission.problem_path = problem.problem_path
-                submission.problem_title = problem.title
-                submission.fetch_status = "success"
-                if snapshot is None:
-                    snapshot = ProblemSnapshot(submission=submission, normalized_url=problem.normalized_url)
-                    db.session.add(snapshot)
-                snapshot.normalized_url = problem.normalized_url
-                snapshot.title = problem.title
-                snapshot.description_text = problem.description_text
-                snapshot.input_text = problem.input_text
-                snapshot.output_text = problem.output_text
-                snapshot.sample_input_text = problem.sample_input_text
-                snapshot.sample_output_text = problem.sample_output_text
-                snapshot.source_text = problem.source_text
-                snapshot.raw_excerpt = problem.raw_excerpt
-                snapshot.fetch_error = None
-            except ProblemFetchError as exc:
-                submission.fetch_status = "failed"
-                submission.diagnosis_status = "failed"
-                if snapshot is None:
-                    snapshot = ProblemSnapshot(submission=submission, normalized_url=submission.problem_url)
-                    db.session.add(snapshot)
-                snapshot.fetch_error = str(exc)
-                db.session.add(
-                    DiagnosisRun(
-                        submission=submission,
-                        model_name=current_app.config["DEEPSEEK_MODEL"],
-                        prompt_version=PROMPT_VERSION,
-                        status="failed",
-                        error_message=f"抓取题面失败：{exc}",
-                    )
-                )
-                db.session.commit()
-                flash(f"抓取题面失败：{exc}", "error")
-                return redirect(url_for("admin.submission_detail", public_id=public_id))
-            db.session.commit()
-
-        diagnosis = diagnosis_service.diagnose(
-            DiagnosisPayload(
-                student_name=submission.student_name,
-                problem_url=submission.problem_url,
-                problem_title=submission.problem_title,
-                description_text=snapshot.description_text if snapshot else None,
-                input_text=snapshot.input_text if snapshot else None,
-                output_text=snapshot.output_text if snapshot else None,
-                sample_input_text=snapshot.sample_input_text if snapshot else None,
-                sample_output_text=snapshot.sample_output_text if snapshot else None,
-                code_text=submission.code_text,
-            )
-        )
-
-        submission.diagnosis_status = "success"
-        db.session.add(
-            DiagnosisRun(
-                submission=submission,
-                model_name=diagnosis.model_name,
-                prompt_version=PROMPT_VERSION,
-                status="success",
-                structured_result_json=diagnosis.result.model_dump(),
-                summary_text=diagnosis.result.overall_assessment,
-                latency_ms=diagnosis.latency_ms,
-            )
-        )
-        db.session.commit()
-        flash("AI 诊断已生成。", "success")
-    except (DiagnosisServiceError, SQLAlchemyError) as exc:
+        enqueue_diagnosis_job(submission, requested_by="admin")
+        flash("后台任务已入队，请刷新详情查看结果。", "success")
+    except JobQueueError as exc:
         db.session.rollback()
-        submission.diagnosis_status = "failed"
-        db.session.add(
-            DiagnosisRun(
-                submission=submission,
-                model_name=current_app.config["DEEPSEEK_MODEL"],
-                prompt_version=PROMPT_VERSION,
-                status="failed",
-                error_message=str(exc),
-            )
-        )
-        db.session.commit()
-        flash(f"AI 诊断生成失败：{exc}", "error")
+        flash(str(exc), "error")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("提交后台任务失败，请稍后再试。", "error")
 
     return redirect(url_for("admin.submission_detail", public_id=public_id))

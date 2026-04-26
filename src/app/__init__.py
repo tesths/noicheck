@@ -6,6 +6,7 @@ from .bootstrap import bootstrap_app, ensure_database_schema, validate_runtime_c
 from .config import Config
 from .extensions import csrf, db, login_manager, migrate
 from .routes.admin import admin_bp
+from .routes.internal import internal_bp
 from .routes.public import public_bp
 from .services.auth import register_auth_commands
 
@@ -23,6 +24,7 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
 
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(internal_bp)
     register_auth_commands(app)
 
     with app.app_context():

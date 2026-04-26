@@ -8,6 +8,19 @@ def _generate_public_id() -> str:
     return secrets.token_urlsafe(8)
 
 
+_STATUS_LABELS = {
+    "pending": "待处理",
+    "queued": "排队中",
+    "running": "处理中",
+    "success": "成功",
+    "failed": "失败",
+}
+
+
+def _status_label(value: str) -> str:
+    return _STATUS_LABELS.get(value, value)
+
+
 class Submission(db.Model):
     __tablename__ = "submissions"
 
@@ -41,3 +54,11 @@ class Submission(db.Model):
         if not self.diagnosis_runs:
             return None
         return max(self.diagnosis_runs, key=lambda item: item.created_at)
+
+    @property
+    def fetch_status_label(self) -> str:
+        return _status_label(self.fetch_status)
+
+    @property
+    def diagnosis_status_label(self) -> str:
+        return _status_label(self.diagnosis_status)

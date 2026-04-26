@@ -5,7 +5,7 @@
   <div class="hero-copy">
     <p class="eyebrow">匿名提交 · 教师后台可见</p>
     <h1>提交你的 OpenJudge 代码</h1>
-    <p>输入姓名或昵称、OpenJudge 题目链接，再粘贴 C++ 代码。系统会抓取题面并生成供老师参考的 AI 诊断。</p>
+    <p>输入姓名或昵称、OpenJudge 题目链接，再粘贴 C++ 代码。系统会先进入后台队列抓题，老师稍后可在后台发起 AI 诊断。</p>
   </div>
   <form class="panel form-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -21,7 +21,7 @@
       <span>C++ 代码</span>
       <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
     </label>
-    <button class="primary-button" type="submit">提交并生成诊断</button>
+    <button class="primary-button" type="submit">提交并进入排队</button>
   </form>
 </section>
 {% endblock %}

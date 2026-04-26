@@ -1,27 +1,33 @@
+from bs4 import BeautifulSoup
+
 from src.app.extensions import db
-from src.app.models import AdminUser, Submission
-from src.app.services.ai import DiagnosisPayload, DiagnosisResponse
-from src.app.services.problem_fetcher import ProblemContent, ProblemFetchError
-from src.app.schemas import DiagnosisResult
+from src.app.models import AdminUser, ProblemSnapshot, Submission
 from src.app.services.auth import hash_password
 
 
-def test_submit_persists_submission_and_fetches_problem_snapshot(app, client, monkeypatch):
-    def fake_fetch(self, url):
-        return ProblemContent(
-            normalized_url="http://noi.openjudge.cn/ch0107/01/",
-            problem_path="ch0107/01",
-            title="01:统计数字字符个数",
-            description_text="desc",
-            input_text="input",
-            output_text="output",
-            sample_input_text="abc123",
-            sample_output_text="3",
-            source_text="source",
-            raw_excerpt="desc\ninput\noutput",
-        )
+def _login_admin(client) -> None:
+    login_page = client.get("/admin/login")
+    csrf_token = BeautifulSoup(login_page.data, "html.parser").select_one("input[name=csrf_token]")[
+        "value"
+    ]
+    response = client.post(
+        "/admin/login",
+        data={"csrf_token": csrf_token, "username": "admin", "password": "secret123"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
 
-    monkeypatch.setattr("src.app.routes.public.OpenJudgeProblemFetcher.fetch", fake_fetch)
+
+def _detail_csrf_token(client, public_id: str) -> str:
+    detail_page = client.get(f"/admin/submissions/{public_id}")
+    return BeautifulSoup(detail_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
+
+
+def test_submit_persists_submission_and_queues_problem_fetch(app, client, monkeypatch):
+    def fail_if_fetch_called(self, url):
+        raise AssertionError("提交接口不应同步抓题")
+
+    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fail_if_fetch_called)
 
     response = client.post(
         "/submit",
@@ -38,20 +44,23 @@ def test_submit_persists_submission_and_fetches_problem_snapshot(app, client, mo
 
     with app.app_context():
         submission = Submission.query.one()
-        assert submission.problem_title == "01:统计数字字符个数"
-        assert submission.problem_path == "ch0107/01"
-        assert submission.fetch_status == "success"
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert submission.problem_title is None
+        assert submission.problem_path is None
+        assert submission.fetch_status == "queued"
         assert submission.diagnosis_status == "pending"
-        assert submission.latest_diagnosis_run is None
-        assert submission.problem_snapshot.title == "01:统计数字字符个数"
+        assert submission.problem_snapshot is None
+        assert jobs == [
+            {
+                "job_type": "fetch-problem",
+                "submission_public_id": submission.public_id,
+                "requested_by": "system",
+            }
+        ]
 
 
-def test_submit_marks_fetch_failed_when_problem_fetch_fails(app, client, monkeypatch):
-    def fake_fetch(self, url):
-        raise ProblemFetchError("OpenJudge 暂时无法访问。")
-
-    monkeypatch.setattr("src.app.routes.public.OpenJudgeProblemFetcher.fetch", fake_fetch)
-
+def test_submit_success_page_shows_queued_status(app, client):
     response = client.post(
         "/submit",
         data={
@@ -59,16 +68,12 @@ def test_submit_marks_fetch_failed_when_problem_fetch_fails(app, client, monkeyp
             "problem_url": "http://noi.openjudge.cn/ch0107/01/",
             "code_text": "#include <iostream>\nint main() { return 0; }",
         },
-        follow_redirects=False,
+        follow_redirects=True,
     )
 
-    assert response.status_code == 302
-
-    with app.app_context():
-        submission = Submission.query.one()
-        assert submission.fetch_status == "failed"
-        assert submission.diagnosis_status == "pending"
-        assert submission.problem_snapshot.fetch_error == "OpenJudge 暂时无法访问。"
+    assert response.status_code == 200
+    assert "已进入后台排队".encode() in response.data
+    assert "queued".encode() in response.data
 
 
 def test_stylesheet_is_served(client):
@@ -137,35 +142,7 @@ def test_admin_can_login_and_view_submission(app, client):
     assert "统计数字字符个数".encode() in detail_response.data
 
 
-def test_admin_can_generate_diagnosis(app, client, monkeypatch):
-    def fake_diagnose(self, payload: DiagnosisPayload):
-        return DiagnosisResponse(
-            result=DiagnosisResult.model_validate(
-                {
-                    "overall_assessment": "更像是字符统计逻辑有遗漏。",
-                    "confidence": "medium",
-                    "missing_context": [],
-                    "possible_issues": [
-                        {
-                            "title": "没有正确判断数字字符",
-                            "location": "主逻辑判断分支",
-                            "evidence": "代码中未见 isdigit 或范围判断。",
-                            "explanation": "可能把所有字符都累计了。",
-                            "suggested_fix": "只在字符位于 '0' 到 '9' 时递增计数。",
-                        }
-                    ],
-                    "teacher_talking_points": ["先检查判断条件是否只针对数字。"],
-                    "next_step_checks": ["用 abc123 和 000 做自测。"],
-                    "correct_program": "#include <iostream>\nusing namespace std;\nint main(){return 0;}",
-                }
-            ),
-            raw_content="{}",
-            latency_ms=120,
-            model_name="deepseek-v4-pro",
-        )
-
-    monkeypatch.setattr("src.app.routes.admin.DeepSeekDiagnosisService.diagnose", fake_diagnose)
-
+def test_admin_can_queue_diagnosis_when_fetch_succeeded(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         submission = Submission(
@@ -175,8 +152,6 @@ def test_admin_can_generate_diagnosis(app, client, monkeypatch):
             fetch_status="success",
             diagnosis_status="pending",
         )
-        from src.app.models import ProblemSnapshot
-
         snapshot = ProblemSnapshot(
             submission=submission,
             normalized_url="http://noi.openjudge.cn/ch0107/01/",
@@ -191,21 +166,10 @@ def test_admin_can_generate_diagnosis(app, client, monkeypatch):
         db.session.commit()
         public_id = submission.public_id
 
-    login_page = client.get("/admin/login")
-    from bs4 import BeautifulSoup
-
-    csrf_token = BeautifulSoup(login_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
-    client.post(
-        "/admin/login",
-        data={"csrf_token": csrf_token, "username": "admin", "password": "secret123"},
-        follow_redirects=False,
-    )
-
-    detail_page = client.get(f"/admin/submissions/{public_id}")
-    detail_csrf = BeautifulSoup(detail_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
+    _login_admin(client)
     response = client.post(
         f"/admin/submissions/{public_id}/diagnose",
-        data={"csrf_token": detail_csrf},
+        data={"csrf_token": _detail_csrf_token(client, public_id)},
         follow_redirects=False,
     )
 
@@ -213,60 +177,21 @@ def test_admin_can_generate_diagnosis(app, client, monkeypatch):
 
     with app.app_context():
         submission = Submission.query.filter_by(public_id=public_id).one()
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
         assert submission.fetch_status == "success"
-        assert submission.diagnosis_status == "success"
-        assert submission.latest_diagnosis_run.structured_result_json["possible_issues"][0]["title"] == "没有正确判断数字字符"
+        assert submission.diagnosis_status == "queued"
+        assert submission.latest_diagnosis_run is None
+        assert jobs == [
+            {
+                "job_type": "diagnose-submission",
+                "submission_public_id": public_id,
+                "requested_by": "admin",
+            }
+        ]
 
-    detail_after = client.get(f"/admin/submissions/{public_id}")
-    assert detail_after.status_code == 200
-    assert "诊断原因与可能位置".encode() in detail_after.data
-    assert "正确的完整程序".encode() in detail_after.data
 
-
-def test_admin_retries_fetch_before_ai_when_submit_fetch_failed(app, client, monkeypatch):
-    def fake_fetch(self, url):
-        return ProblemContent(
-            normalized_url="http://noi.openjudge.cn/ch0107/20/",
-            problem_path="ch0107/20",
-            title="20:删除单词后缀",
-            description_text="desc",
-            input_text="input",
-            output_text="output",
-            sample_input_text="referer",
-            sample_output_text="refer",
-            source_text="source",
-            raw_excerpt="desc\ninput\noutput",
-        )
-
-    def fake_diagnose(self, payload: DiagnosisPayload):
-        return DiagnosisResponse(
-            result=DiagnosisResult.model_validate(
-                {
-                    "overall_assessment": "后缀判断逻辑有误。",
-                    "confidence": "medium",
-                    "missing_context": [],
-                    "possible_issues": [
-                        {
-                            "title": "没有正确处理后缀",
-                            "location": "字符串判断分支",
-                            "evidence": "没有看到对后缀长度和内容的判断。",
-                            "explanation": "可能直接输出了原始单词。",
-                            "suggested_fix": "按 er、ly、ing 分支分别处理。",
-                        }
-                    ],
-                    "teacher_talking_points": ["先检查后缀判断是否完整。"],
-                    "next_step_checks": ["用 referer 和 happily 做自测。"],
-                    "correct_program": "#include <iostream>\nusing namespace std;\nint main(){return 0;}",
-                }
-            ),
-            raw_content="{}",
-            latency_ms=120,
-            model_name="deepseek-v4-pro",
-        )
-
-    monkeypatch.setattr("src.app.routes.admin.OpenJudgeProblemFetcher.fetch", fake_fetch)
-    monkeypatch.setattr("src.app.routes.admin.DeepSeekDiagnosisService.diagnose", fake_diagnose)
-
+def test_admin_queues_combined_job_when_fetch_not_ready(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         submission = Submission(
@@ -280,21 +205,10 @@ def test_admin_retries_fetch_before_ai_when_submit_fetch_failed(app, client, mon
         db.session.commit()
         public_id = submission.public_id
 
-    login_page = client.get("/admin/login")
-    from bs4 import BeautifulSoup
-
-    csrf_token = BeautifulSoup(login_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
-    client.post(
-        "/admin/login",
-        data={"csrf_token": csrf_token, "username": "admin", "password": "secret123"},
-        follow_redirects=False,
-    )
-
-    detail_page = client.get(f"/admin/submissions/{public_id}")
-    detail_csrf = BeautifulSoup(detail_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
+    _login_admin(client)
     response = client.post(
         f"/admin/submissions/{public_id}/diagnose",
-        data={"csrf_token": detail_csrf},
+        data={"csrf_token": _detail_csrf_token(client, public_id)},
         follow_redirects=False,
     )
 
@@ -302,58 +216,47 @@ def test_admin_retries_fetch_before_ai_when_submit_fetch_failed(app, client, mon
 
     with app.app_context():
         submission = Submission.query.filter_by(public_id=public_id).one()
-        assert submission.fetch_status == "success"
-        assert submission.diagnosis_status == "success"
-        assert submission.latest_diagnosis_run.structured_result_json["possible_issues"][0]["title"] == "没有正确处理后缀"
-        assert submission.problem_snapshot.title == "20:删除单词后缀"
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert submission.fetch_status == "queued"
+        assert submission.diagnosis_status == "queued"
+        assert submission.latest_diagnosis_run is None
+        assert jobs == [
+            {
+                "job_type": "fetch-and-diagnose",
+                "submission_public_id": public_id,
+                "requested_by": "admin",
+            }
+        ]
 
 
-def test_admin_stops_diagnosis_when_problem_fetch_fails(app, client, monkeypatch):
-    def fake_fetch(self, url):
-        raise ProblemFetchError("OpenJudge 暂时无法访问。")
-
-    def fail_if_diagnose_called(self, payload):
-        raise AssertionError("抓题失败后不应继续调用 AI")
-
-    monkeypatch.setattr("src.app.routes.admin.OpenJudgeProblemFetcher.fetch", fake_fetch)
-    monkeypatch.setattr("src.app.routes.admin.DeepSeekDiagnosisService.diagnose", fail_if_diagnose_called)
-
+def test_admin_does_not_requeue_diagnosis_when_already_processing(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         submission = Submission(
             student_name="小明",
             problem_url="http://noi.openjudge.cn/ch0107/20/",
             code_text="int main() { return 0; }",
-            fetch_status="failed",
-            diagnosis_status="pending",
+            fetch_status="success",
+            diagnosis_status="queued",
         )
         db.session.add_all([admin, submission])
         db.session.commit()
         public_id = submission.public_id
 
-    login_page = client.get("/admin/login")
-    from bs4 import BeautifulSoup
-
-    csrf_token = BeautifulSoup(login_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
-    client.post(
-        "/admin/login",
-        data={"csrf_token": csrf_token, "username": "admin", "password": "secret123"},
-        follow_redirects=False,
-    )
-
-    detail_page = client.get(f"/admin/submissions/{public_id}")
-    detail_csrf = BeautifulSoup(detail_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
+    _login_admin(client)
     response = client.post(
         f"/admin/submissions/{public_id}/diagnose",
-        data={"csrf_token": detail_csrf},
-        follow_redirects=False,
+        data={},
+        follow_redirects=True,
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 200
+    assert "已有后台任务正在处理这条提交".encode() in response.data
 
     with app.app_context():
-        submission = Submission.query.filter_by(public_id=public_id).first()
-        assert submission.fetch_status == "failed"
-        assert submission.diagnosis_status == "failed"
-        assert submission.latest_diagnosis_run.status == "failed"
-        assert "抓取题面失败" in submission.latest_diagnosis_run.error_message
+        submission = Submission.query.filter_by(public_id=public_id).one()
+        jobs = app.extensions.get("job_queue_stub", {"jobs": []})["jobs"]
+
+        assert submission.diagnosis_status == "queued"
+        assert jobs == []

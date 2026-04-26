@@ -9,7 +9,9 @@
         <h1>{{ submission.student_name }}</h1>
       </div>
       <div class="panel-actions">
-        {% if submission.diagnosis_status != "success" %}
+        {% if submission.diagnosis_status in ["queued", "running"] %}
+          <button class="primary-button" type="button" disabled>后台处理中</button>
+        {% elif submission.diagnosis_status != "success" %}
           <form method="post" action="{{ url_for('admin.generate_diagnosis', public_id=submission.public_id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button class="primary-button" type="submit">
@@ -31,11 +33,11 @@
       </div>
       <div>
         <dt>抓题状态</dt>
-        <dd>{{ submission.fetch_status }}</dd>
+        <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
       </div>
       <div>
         <dt>诊断状态</dt>
-        <dd>{{ submission.diagnosis_status }}</dd>
+        <dd><span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span></dd>
       </div>
     </dl>
   </article>
@@ -47,7 +49,9 @@
 
   <article class="panel">
     <p class="eyebrow">抓取到的题面</p>
-    {% if submission.problem_snapshot %}
+    {% if submission.fetch_status in ["queued", "running"] %}
+      <p class="empty-state">题面任务正在后台处理中，稍后刷新即可看到结果。</p>
+    {% elif submission.problem_snapshot %}
       {% if submission.problem_snapshot.fetch_error %}
         <p class="empty-state">{{ submission.problem_snapshot.fetch_error }}</p>
       {% else %}
@@ -81,7 +85,9 @@
 
   <article class="panel">
     <p class="eyebrow">AI 诊断</p>
-    {% if submission.latest_diagnosis_run %}
+    {% if submission.diagnosis_status in ["queued", "running"] %}
+      <p class="empty-state">AI 诊断正在后台处理中，请稍后刷新查看。</p>
+    {% elif submission.latest_diagnosis_run %}
       {% if submission.latest_diagnosis_run.status == "success" %}
         {% set result = submission.latest_diagnosis_run.structured_result_json %}
         <div class="diagnosis-summary">
@@ -138,7 +144,9 @@
 
   <article class="panel diagnosis-program-panel">
     <p class="eyebrow">参考程序</p>
-    {% if submission.latest_diagnosis_run and submission.latest_diagnosis_run.status == "success" %}
+    {% if submission.diagnosis_status in ["queued", "running"] %}
+      <p class="empty-state">AI 诊断仍在处理中，参考程序会在任务完成后展示。</p>
+    {% elif submission.latest_diagnosis_run and submission.latest_diagnosis_run.status == "success" %}
       {% set result = submission.latest_diagnosis_run.structured_result_json %}
       <h3>正确的完整程序</h3>
       <pre class="code-block"><code>{{ result.correct_program or "模型本次未返回完整程序。" }}</code></pre>

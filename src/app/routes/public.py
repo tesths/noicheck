@@ -6,9 +6,11 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from ..bootstrap import ensure_database_schema
 from ..extensions import db
-from ..models import ProblemSnapshot, Submission
+from ..models import Submission
 from ..services.auth import hash_client_ip
-from ..services.problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError, normalize_openjudge_url
+from ..services.job_queue import JobQueueError
+from ..services.jobs import enqueue_fetch_problem_job
+from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
 
 public_bp = Blueprint("public", __name__)
 
@@ -165,35 +167,9 @@ def _persist_submission(submission: Submission) -> Submission:
         current_app.logger.exception("修表后再次保存仍失败，准备改用显式主键兜底")
         return _persist_submission_with_explicit_id(submission)
 
+
 def _sync_problem_snapshot(submission: Submission) -> None:
-    fetcher = OpenJudgeProblemFetcher(timeout=float(current_app.config.get("OPENJUDGE_REQUEST_TIMEOUT", 10)))
-    snapshot = submission.problem_snapshot
-    try:
-        problem = fetcher.fetch(submission.problem_url)
-        submission.problem_url = problem.normalized_url
-        submission.problem_path = problem.problem_path
-        submission.problem_title = problem.title
-        submission.fetch_status = "success"
-        if snapshot is None:
-            snapshot = ProblemSnapshot(submission=submission, normalized_url=problem.normalized_url)
-            db.session.add(snapshot)
-        snapshot.normalized_url = problem.normalized_url
-        snapshot.title = problem.title
-        snapshot.description_text = problem.description_text
-        snapshot.input_text = problem.input_text
-        snapshot.output_text = problem.output_text
-        snapshot.sample_input_text = problem.sample_input_text
-        snapshot.sample_output_text = problem.sample_output_text
-        snapshot.source_text = problem.source_text
-        snapshot.raw_excerpt = problem.raw_excerpt
-        snapshot.fetch_error = None
-    except ProblemFetchError as exc:
-        submission.fetch_status = "failed"
-        if snapshot is None:
-            snapshot = ProblemSnapshot(submission=submission, normalized_url=submission.problem_url)
-            db.session.add(snapshot)
-        snapshot.fetch_error = str(exc)
-    db.session.commit()
+    enqueue_fetch_problem_job(submission, requested_by="system")
 
 
 @public_bp.get("/")
@@ -243,9 +219,11 @@ def submit():
 
     try:
         _sync_problem_snapshot(submission)
-    except SQLAlchemyError:
+    except (JobQueueError, SQLAlchemyError):
         db.session.rollback()
-        current_app.logger.exception("提交后同步抓题失败，已保留提交记录")
+        current_app.logger.exception("提交后排队抓题失败")
+        flash("提交记录已保存，但后台排队失败，请稍后重试或联系老师。", "error")
+        return render_template("submit.html", form_data=form_data), 500
 
     return redirect(url_for("public.submit_success", public_id=submission.public_id))
 

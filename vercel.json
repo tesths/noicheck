@@ -7,10 +7,25 @@
       "use": "@vercel/static"
     },
     {
+      "src": "api/queues/process-submission.js",
+      "use": "@vercel/node"
+    },
+    {
       "src": "src/index.py",
       "use": "@vercel/python"
     }
   ],
+  "functions": {
+    "api/queues/process-submission.js": {
+      "runtime": "@vercel/node",
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "noi_submission_jobs"
+        }
+      ]
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

@@ -31,6 +31,9 @@ class TestConfig:
     SUBMISSION_CODE_MAX_LENGTH = 20000
     RATE_LIMIT_MAX_SUBMISSIONS = 20
     RATE_LIMIT_WINDOW_SECONDS = 300
+    JOB_QUEUE_BACKEND = "stub"
+    INTERNAL_JOB_TOKEN = "test-internal-job-token"
+    APP_BASE_URL = "http://localhost:5000"
 
 
 @pytest.fixture()

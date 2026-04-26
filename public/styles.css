@@ -176,6 +176,12 @@ textarea {
   font-weight: 700;
 }
 
+.primary-button:disabled,
+.ghost-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
 .primary-button {
   color: #fff7f1;
   background: linear-gradient(135deg, var(--accent) 0%, var(--accent-strong) 100%);
@@ -276,6 +282,7 @@ th {
 }
 
 .status-running,
+.status-queued,
 .status-pending {
   color: var(--warn);
 }

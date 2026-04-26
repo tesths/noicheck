@@ -45,6 +45,13 @@ def _build_engine_options(url: str) -> dict:
     }
 
 
+def _default_job_queue_backend() -> str:
+    explicit = os.getenv("JOB_QUEUE_BACKEND")
+    if explicit:
+        return explicit.strip().lower()
+    return "vercel" if _is_production_environment() else "inline"
+
+
 class Config:
     IS_PRODUCTION = _is_production_environment()
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
@@ -73,3 +80,9 @@ class Config:
     SUBMISSION_CODE_MAX_LENGTH = int(os.getenv("SUBMISSION_CODE_MAX_LENGTH", "20000"))
     RATE_LIMIT_MAX_SUBMISSIONS = int(os.getenv("RATE_LIMIT_MAX_SUBMISSIONS", "20"))
     RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("RATE_LIMIT_WINDOW_SECONDS", "300"))
+    JOB_QUEUE_BACKEND = _default_job_queue_backend()
+    VERCEL_QUEUE_REGION = os.getenv("VERCEL_QUEUE_REGION", "iad1").strip()
+    VERCEL_QUEUE_TOPIC = os.getenv("VERCEL_QUEUE_TOPIC", "noi_submission_jobs").strip()
+    VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN", "").strip()
+    INTERNAL_JOB_TOKEN = os.getenv("INTERNAL_JOB_TOKEN", "").strip()
+    APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")

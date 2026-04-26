@@ -4,7 +4,7 @@
 <section class="panel success-panel">
   <p class="eyebrow">提交成功</p>
   <h1>{{ submission.student_name }}</h1>
-  <p>你的代码已经提交成功。系统会立即抓取题面数据，老师后续会在后台点击生成 AI 诊断。</p>
+  <p>你的代码已经提交成功，并已进入后台排队。系统会先抓取题面，老师后续可在后台发起 AI 诊断。</p>
   <dl class="meta-grid">
     <div>
       <dt>题目</dt>
@@ -12,11 +12,11 @@
     </div>
     <div>
       <dt>抓题状态</dt>
-      <dd>{{ submission.fetch_status }}</dd>
+      <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
     </div>
     <div>
       <dt>诊断状态</dt>
-      <dd>{{ submission.diagnosis_status }}</dd>
+      <dd><span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span></dd>
     </div>
     <div>
       <dt>提交编号</dt>
