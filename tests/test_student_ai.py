@@ -82,6 +82,9 @@ def test_deepseek_service_generates_student_hint_without_reference_program():
     assert "用小学生也能听懂的话" in call["messages"][0]["content"]
     assert "如果学生提交的内容明显不是 C++ 程序" in call["messages"][0]["content"]
     assert "这里只能提交题目对应的程序代码" in call["messages"][0]["content"]
+    assert "如果学生的程序只有变量定义、函数声明、空的 main" in call["messages"][0]["content"]
+    assert "也不要只说代码太少" in call["messages"][0]["content"]
+    assert "要继续告诉学生先补哪一步" in call["messages"][0]["content"]
     assert "明确告诉学生下一步先做什么" in call["messages"][0]["content"]
     assert "语气要真诚、温和、鼓励" in call["messages"][0]["content"]
     assert "完整正确的 C++ 参考程序" not in call["messages"][1]["content"]
@@ -89,6 +92,65 @@ def test_deepseek_service_generates_student_hint_without_reference_program():
     assert isinstance(result.result, StudentHintResult)
     assert result.result.encouragement_or_strategy == "先定位问题，再改最小一处代码。"
     assert "correct_program" not in result.result.model_dump()
+
+
+def test_deepseek_service_student_prompt_guides_stub_code():
+    client = FakeClient()
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    service.diagnose_student(
+        DiagnosisPayload(
+            student_name="小红",
+            problem_url="https://noi.openjudge.cn/ch0106/01/",
+            problem_title="01:整数求和",
+            description_text="输入两个整数，输出它们的和。",
+            input_text="两个整数。",
+            output_text="一个整数。",
+            sample_input_text="1 2",
+            sample_output_text="3",
+            code_text="int a;\nint b;\nint main() {\n}\n",
+        )
+    )
+
+    call = client.chat.completions.calls[0]
+    assert "如果学生的程序只有变量定义、函数声明、空的 main" in call["messages"][0]["content"]
+    assert "也不要只说代码太少" in call["messages"][0]["content"]
+    assert "先补输入、计算、判断、循环或输出里最先缺的一步" in call["messages"][0]["content"]
+
+
+def test_deepseek_service_student_prompt_teaches_input_patiently():
+    client = FakeClient()
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    service.diagnose_student(
+        DiagnosisPayload(
+            student_name="小刚",
+            problem_url="https://noi.openjudge.cn/ch0105/01/",
+            problem_title="01:苹果和虫子",
+            description_text="读入两个整数，输出它们的和。",
+            input_text="一行，两个整数。",
+            output_text="一个整数。",
+            sample_input_text="3 5",
+            sample_output_text="8",
+            code_text="int main() {\n    return 0;\n}\n",
+        )
+    )
+
+    call = client.chat.completions.calls[0]
+    assert "要像耐心、温柔的老师一样" in call["messages"][0]["content"]
+    assert "把题目里的输入格式、输出格式翻成孩子能听懂的话" in call["messages"][0]["content"]
+    assert "告诉学生题目会先给什么、要用什么变量接住、按什么顺序读入" in call["messages"][0]["content"]
+    assert "按先定义变量、再写输入、再写处理、最后写输出的顺序引导" in call["messages"][0]["content"]
 
 
 def test_internal_job_endpoint_processes_student_hint_job(app, client, monkeypatch):
@@ -165,7 +227,7 @@ def test_internal_job_endpoint_processes_student_hint_job(app, client, monkeypat
         assert submission.student_hint_status == "success"
         assert submission.diagnosis_status == "pending"
         assert submission.latest_student_hint_run.status == "success"
-        assert submission.latest_student_hint_run.prompt_version == "student-v3"
+        assert submission.latest_student_hint_run.prompt_version == "student-v5"
         assert submission.latest_diagnosis_run is None
         assert len(student_runs) == 1
 
