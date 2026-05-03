@@ -166,7 +166,7 @@ def test_admin_submission_list_student_label_uses_no_wrap_container(app, client)
     assert "马晨曦（mcx）" in label.get_text(strip=True)
 
 
-def test_admin_submission_list_primary_columns_use_single_line_cells(app, client):
+def test_admin_submission_list_uses_compact_single_page_layout(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
@@ -187,12 +187,18 @@ def test_admin_submission_list_primary_columns_use_single_line_cells(app, client
     soup = BeautifulSoup(response.data, "html.parser")
 
     assert response.status_code == 200
+    headers = [item.get_text(" ", strip=True) for item in soup.select("thead th")]
+    assert headers[:3] == ["提交信息", "状态", ""]
     row = soup.select_one("tbody tr")
     assert row is not None
-    assert "2026-05-03 08:05" in row.select_one(".submission-time-cell").get_text(" ", strip=True)
-    assert "张小明（stu01）" in row.select_one(".student-cell").get_text(" ", strip=True)
-    assert "自己提交" in row.select_one(".submission-mode-cell").get_text(" ", strip=True)
-    assert "01:统计数字字符个数" in row.select_one(".submission-title-cell").get_text(" ", strip=True)
+    assert "2026-05-03 08:05" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
+    assert "张小明（stu01）" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
+    assert "自己提交" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
+    assert "01:统计数字字符个数" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
+    status_text = row.select_one(".submission-status-cell").get_text(" ", strip=True)
+    assert "抓题" in status_text
+    assert "学生提示" in status_text
+    assert "老师诊断" in status_text
 
 
 def test_admin_submission_actions_use_unified_button_style(app, client):

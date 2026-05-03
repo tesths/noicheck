@@ -39,31 +39,34 @@
   </form>
 
   {% if submissions %}
-    <div class="table-shell">
+    <div class="table-shell submission-table-shell">
       <table class="submission-list-table">
         <thead>
           <tr>
-            <th>时间（北京时间）</th>
-            <th>学生</th>
-            <th>类型</th>
-            <th>题目</th>
-            <th>抓题</th>
-            <th>学生提示</th>
-            <th>老师诊断</th>
+            <th>提交信息</th>
+            <th>状态</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for submission in submissions %}
             <tr>
-              <td class="submission-time-cell">{{ submission.created_at|beijing_datetime }}</td>
-              <td class="student-cell submission-student-cell"><span class="student-label">{{ submission.admin_student_label }}</span></td>
-              <td class="submission-mode-cell">{{ submission.submission_mode_label }}</td>
-              <td class="submission-title-cell">{{ submission.problem_title or submission.problem_path or submission.problem_url }}</td>
-              <td class="status-cell"><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></td>
-              <td class="status-cell"><span class="status status-{{ submission.student_hint_status }}">{{ submission.student_hint_status_label }}</span></td>
-              <td class="status-cell"><span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span></td>
-              <td class="actions-cell">
+              <td class="submission-primary-cell">
+                <div class="submission-primary-line">
+                  <span class="submission-time">{{ submission.created_at|beijing_datetime }}</span>
+                  <span class="submission-student student-label">{{ submission.admin_student_label }}</span>
+                  <span class="submission-mode">{{ submission.submission_mode_label }}</span>
+                  <span class="submission-title" title="{{ submission.problem_title or submission.problem_path or submission.problem_url }}">{{ submission.problem_title or submission.problem_path or submission.problem_url }}</span>
+                </div>
+              </td>
+              <td class="status-cell submission-status-cell">
+                <div class="submission-status-list">
+                  <span class="status status-{{ submission.fetch_status }}">抓题 {{ submission.fetch_status_label }}</span>
+                  <span class="status status-{{ submission.student_hint_status }}">学生提示 {{ submission.student_hint_status_label }}</span>
+                  <span class="status status-{{ submission.diagnosis_status }}">老师诊断 {{ submission.diagnosis_status_label }}</span>
+                </div>
+              </td>
+              <td class="actions-cell submission-actions-cell">
                 <div class="row-actions">
                   <a class="ghost-button mini-button" href="{{ url_for('admin.submission_detail', public_id=submission.public_id) }}">查看详情</a>
                   <form method="post" action="{{ url_for('admin.delete_submission', public_id=submission.public_id) }}">

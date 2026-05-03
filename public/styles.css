@@ -334,8 +334,13 @@ table {
   border-collapse: collapse;
 }
 
+.submission-table-shell {
+  overflow-x: visible;
+}
+
 .submission-list-table {
-  min-width: 1240px;
+  min-width: 0;
+  table-layout: fixed;
 }
 
 .student-overview-table {
@@ -378,27 +383,78 @@ th {
   white-space: nowrap;
 }
 
-.submission-time-cell,
-.submission-student-cell,
-.submission-mode-cell,
-.submission-title-cell {
+.submission-list-table th,
+.submission-list-table td {
+  padding: 12px 8px;
+}
+
+.submission-primary-cell {
+  width: 60%;
+}
+
+.submission-primary-line {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
   white-space: nowrap;
 }
 
-.submission-time-cell {
-  min-width: 140px;
+.submission-primary-line > span {
+  min-width: 0;
 }
 
-.submission-student-cell {
-  min-width: 150px;
+.submission-primary-line > span:not(:first-child)::before {
+  content: "·";
+  margin: 0 8px;
+  color: var(--muted);
 }
 
-.submission-mode-cell {
-  min-width: 84px;
+.submission-time,
+.submission-student,
+.submission-mode {
+  flex: none;
 }
 
-.submission-title-cell {
-  min-width: 260px;
+.submission-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.submission-status-cell {
+  width: 24%;
+}
+
+.submission-status-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.submission-status-list .status {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.submission-actions-cell {
+  width: 16%;
+  min-width: 112px;
+}
+
+.submission-actions-cell .row-actions {
+  display: grid;
+  gap: 6px;
+  justify-items: stretch;
+}
+
+.submission-actions-cell .row-actions form {
+  width: 100%;
+}
+
+.submission-actions-cell .row-actions .ghost-button,
+.submission-actions-cell .row-actions button {
+  width: 100%;
 }
 
 .student-name-cell {
