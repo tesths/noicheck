@@ -143,6 +143,29 @@ def test_admin_submission_list_renders_beijing_time(app, client):
     assert "2026-05-03 08:05".encode() in response.data
 
 
+def test_admin_submission_list_student_label_uses_no_wrap_container(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="mcx", real_name="马晨曦", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="mcx",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/submissions")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    label = soup.select_one(".student-label")
+    assert label is not None
+    assert "马晨曦（mcx）" in label.get_text(strip=True)
+
+
 def test_admin_submission_actions_use_unified_button_style(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))

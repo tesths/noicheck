@@ -57,7 +57,7 @@
           {% for submission in submissions %}
             <tr>
               <td>{{ submission.created_at|beijing_datetime }}</td>
-              <td>{{ submission.admin_student_label }}</td>
+              <td class="student-cell"><span class="student-label">{{ submission.admin_student_label }}</span></td>
               <td>{{ submission.submission_mode_label }}</td>
               <td>{{ submission.problem_title or submission.problem_path or submission.problem_url }}</td>
               <td class="status-cell"><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></td>

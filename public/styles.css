@@ -297,6 +297,12 @@ textarea {
   gap: 10px;
 }
 
+.student-actions-stack,
+.student-name-stack {
+  display: grid;
+  gap: 10px;
+}
+
 .inline-edit-form {
   display: flex;
   gap: 8px;
@@ -316,6 +322,12 @@ textarea {
   border-radius: 14px;
 }
 
+.student-name-stack .admin-inline-input,
+.student-reset-stack .admin-reset-input {
+  width: 100%;
+  min-width: 170px;
+}
+
 .compact-copy {
   padding: 0;
 }
@@ -332,6 +344,10 @@ table {
   width: 100%;
   min-width: 720px;
   border-collapse: collapse;
+}
+
+.student-management-table {
+  min-width: 1180px;
 }
 
 th,
@@ -356,6 +372,53 @@ th {
 
 .actions-cell {
   min-width: 220px;
+}
+
+.student-cell,
+.student-username-cell,
+.student-meta-cell,
+.student-count-cell {
+  vertical-align: middle;
+}
+
+.student-label {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.student-name-cell {
+  min-width: 220px;
+}
+
+.student-username-cell {
+  min-width: 110px;
+}
+
+.student-username {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(124, 53, 24, 0.08);
+  color: var(--accent-strong);
+  font-size: 13px;
+}
+
+.student-meta-cell {
+  min-width: 150px;
+  white-space: nowrap;
+}
+
+.student-count-cell {
+  min-width: 72px;
+  white-space: nowrap;
+}
+
+.student-reset-stack {
+  display: grid;
+  gap: 10px;
 }
 
 .status,

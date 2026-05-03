@@ -137,6 +137,24 @@ def test_student_management_actions_use_unified_button_style(app, client):
     assert "mini-button" in detail_link.get("class", [])
 
 
+def test_student_management_page_uses_roomier_table_layout(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="mcx", real_name="马晨曦", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/students")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    table = soup.select_one(".student-management-table")
+    assert table is not None
+    assert soup.select_one(".student-name-stack") is not None
+    assert soup.select_one(".student-actions-stack") is not None
+
+
 def test_student_submission_list_is_paginated_by_20(app, client):
     with app.app_context():
         student = StudentUser(nickname="小明", real_name="张小明", password_hash=hash_password("pass-123"))
