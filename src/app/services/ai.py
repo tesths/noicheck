@@ -1,6 +1,7 @@
 import json
 import time
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any
 
 from openai import OpenAI
@@ -9,6 +10,8 @@ from ..schemas import DiagnosisResult, StudentHintResult
 
 PROMPT_VERSION = "v1"
 STUDENT_PROMPT_VERSION = "student-v1"
+DEFAULT_TEACHER_MAX_TOKENS = 1800
+DEFAULT_STUDENT_MAX_TOKENS = 900
 
 
 class DiagnosisServiceError(Exception):
@@ -50,12 +53,18 @@ class DeepSeekDiagnosisService:
         api_key: str,
         base_url: str,
         model_name: str,
+        teacher_max_tokens: int = DEFAULT_TEACHER_MAX_TOKENS,
+        student_max_tokens: int = DEFAULT_STUDENT_MAX_TOKENS,
+        openrouter_provider_sort: str = "throughput",
         client: OpenAI | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
-        self.client = client or OpenAI(api_key=api_key, base_url=self.base_url)
+        self.teacher_max_tokens = teacher_max_tokens
+        self.student_max_tokens = student_max_tokens
+        self.openrouter_provider_sort = openrouter_provider_sort.strip()
+        self.client = client or _build_openai_client(api_key=api_key, base_url=self.base_url)
 
     def diagnose(self, payload: DiagnosisPayload) -> DiagnosisResponse:
         return self._diagnose(payload, audience="teacher")
@@ -74,12 +83,15 @@ class DeepSeekDiagnosisService:
 
         started_at = time.perf_counter()
         try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.2,
-                response_format={"type": "json_object"},
-                messages=self._build_messages(payload, audience=audience),
-            )
+            request_kwargs = {
+                "model": self.model_name,
+                "temperature": 0.2,
+                "response_format": {"type": "json_object"},
+                "messages": self._build_messages(payload, audience=audience),
+                "max_tokens": self._max_tokens_for_audience(audience),
+            }
+            request_kwargs.update(self._provider_request_options())
+            response = self.client.chat.completions.create(**request_kwargs)
         except Exception as exc:
             raise DiagnosisServiceError(f"调用 AI 服务失败：{exc}") from exc
 
@@ -191,6 +203,20 @@ class DeepSeekDiagnosisService:
                 payload.code_text,
             ]
         )
+
+    def _max_tokens_for_audience(self, audience: str) -> int:
+        if audience == "student":
+            return self.student_max_tokens
+        return self.teacher_max_tokens
+
+    def _provider_request_options(self) -> dict[str, Any]:
+        if "openrouter.ai" not in self.base_url:
+            return {}
+
+        provider_preferences: dict[str, Any] = {"require_parameters": True}
+        if self.openrouter_provider_sort:
+            provider_preferences["sort"] = self.openrouter_provider_sort
+        return {"extra_body": {"provider": provider_preferences}}
 
 
 def _normalize_result_payload(payload: Any) -> dict[str, Any]:
@@ -326,3 +352,8 @@ def _normalize_confidence(value: Any) -> str:
     if text in {"low", "medium", "high"}:
         return text
     return "medium"
+
+
+@lru_cache(maxsize=8)
+def _build_openai_client(*, api_key: str, base_url: str) -> OpenAI:
+    return OpenAI(api_key=api_key, base_url=base_url.rstrip("/"))

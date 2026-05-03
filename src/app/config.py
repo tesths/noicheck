@@ -79,6 +79,9 @@ class Config:
     AI_API_KEY = _first_env_value("AI_API_KEY", "DEEPSEEK_API_KEY")
     AI_BASE_URL = _first_env_value("AI_BASE_URL", "DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
     AI_MODEL = _first_env_value("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-v4-pro")
+    AI_MAX_TOKENS_TEACHER = int(os.getenv("AI_MAX_TOKENS_TEACHER", "1800"))
+    AI_MAX_TOKENS_STUDENT = int(os.getenv("AI_MAX_TOKENS_STUDENT", "900"))
+    OPENROUTER_PROVIDER_SORT = os.getenv("OPENROUTER_PROVIDER_SORT", "throughput").strip()
     DEEPSEEK_API_KEY = AI_API_KEY
     DEEPSEEK_BASE_URL = AI_BASE_URL
     DEEPSEEK_MODEL = AI_MODEL
