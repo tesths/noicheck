@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}登录入口 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div class="hero-copy">
+    <p class="eyebrow">统一入口</p>
+    <h1>必须登录后使用</h1>
+    <p>学生登录后可以选择“自己提交”或“提交给老师”；老师登录后可以查看学生程序、AI 提示和老师版完整诊断。</p>
+  </div>
+  <div class="panel form-panel">
+    <div class="panel-header">
+      <div>
+        <p class="eyebrow">选择身份</p>
+        <h2>进入对应工作区</h2>
+      </div>
+    </div>
+    <div class="panel-actions">
+      <a class="primary-button" href="{{ url_for('student.login') }}">学生登录</a>
+      <a class="ghost-button" href="{{ url_for('admin.login') }}">教师登录</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

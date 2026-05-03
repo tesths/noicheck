@@ -23,44 +23,23 @@ def _detail_csrf_token(client, public_id: str) -> str:
     return BeautifulSoup(detail_page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
 
 
-def test_submit_persists_submission_and_queues_fetch_and_diagnosis(app, client, monkeypatch):
-    def fail_if_fetch_called(self, url):
-        raise AssertionError("提交接口不应同步抓题")
+def test_home_page_shows_login_hub(client):
+    response = client.get("/")
 
-    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fail_if_fetch_called)
+    assert response.status_code == 200
+    assert "学生登录".encode() in response.data
+    assert "教师登录".encode() in response.data
+    assert "必须登录后使用".encode() in response.data
 
-    response = client.post(
-        "/submit",
-        data={
-            "student_name": "小明",
-            "problem_url": "http://noi.openjudge.cn/ch0107/01/",
-            "code_text": "#include <iostream>\nint main() { return 0; }",
-        },
-        follow_redirects=False,
-    )
+
+def test_submit_page_redirects_to_login_hub(client):
+    response = client.get("/submit", follow_redirects=False)
 
     assert response.status_code == 302
-    assert "/submit/success/" in response.headers["Location"]
-
-    with app.app_context():
-        submission = Submission.query.one()
-        jobs = app.extensions["job_queue_stub"]["jobs"]
-
-        assert submission.problem_title is None
-        assert submission.problem_path is None
-        assert submission.fetch_status == "queued"
-        assert submission.diagnosis_status == "queued"
-        assert submission.problem_snapshot is None
-        assert jobs == [
-            {
-                "job_type": "fetch-and-diagnose",
-                "submission_public_id": submission.public_id,
-                "requested_by": "system",
-            }
-        ]
+    assert response.headers["Location"].endswith("/")
 
 
-def test_submit_success_page_shows_queued_status(app, client):
+def test_submit_post_requires_login_and_does_not_write_submission(app, client):
     response = client.post(
         "/submit",
         data={
@@ -72,9 +51,10 @@ def test_submit_success_page_shows_queued_status(app, client):
     )
 
     assert response.status_code == 200
-    assert "已进入后台排队".encode() in response.data
-    assert "自动继续 AI 诊断".encode() in response.data
-    assert "queued".encode() in response.data
+    assert "请先登录".encode() in response.data
+
+    with app.app_context():
+        assert Submission.query.count() == 0
 
 
 def test_stylesheet_is_served(client):
@@ -84,24 +64,11 @@ def test_stylesheet_is_served(client):
     assert b":root" in response.data
 
 
-def test_submit_page_references_stylesheet(client):
-    response = client.get("/submit")
+def test_home_page_references_stylesheet(client):
+    response = client.get("/")
 
     assert response.status_code == 200
     assert b'/styles.css' in response.data
-
-
-def test_submit_rejects_invalid_url(client):
-    response = client.post(
-        "/submit",
-        data={
-            "student_name": "小明",
-            "problem_url": "https://example.com/a",
-            "code_text": "int main() {}",
-        },
-    )
-
-    assert response.status_code == 400
 
 
 def test_admin_pages_require_login(client):

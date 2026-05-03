@@ -159,6 +159,7 @@ def test_bootstrap_repairs_legacy_submissions_schema(tmp_path):
         assert legacy_submission.public_id
         assert legacy_submission.problem_source == "openjudge"
         assert legacy_submission.language == "cpp"
+        assert legacy_submission.submission_mode == "teacher_review"
         assert legacy_submission.fetch_status == "pending"
         assert legacy_submission.diagnosis_status == "pending"
 
@@ -309,11 +310,10 @@ def test_request_path_repairs_legacy_schema_when_startup_repair_was_skipped(tmp_
         REMEMBER_COOKIE_SECURE = False
 
     monkeypatch.setattr("src.app.bootstrap.bootstrap_app", lambda app: None)
-    monkeypatch.setattr("src.app.routes.public._sync_problem_snapshot", lambda submission: None)
 
     app = create_app(BootstrapConfig)
     client = app.test_client()
-    response = client.get("/submit")
+    response = client.get("/")
     assert response.status_code == 200
 
     with app.app_context():
@@ -371,7 +371,7 @@ def test_request_path_repairs_schema_missing_core_submission_columns(tmp_path, m
 
     app = create_app(BootstrapConfig)
     client = app.test_client()
-    response = client.get("/submit")
+    response = client.get("/")
     assert response.status_code == 200
 
     with app.app_context():
@@ -383,7 +383,7 @@ def test_request_path_repairs_schema_missing_core_submission_columns(tmp_path, m
         assert repaired_row.code_text == ""
 
 
-def test_submit_request_repairs_legacy_schema_and_succeeds(tmp_path, monkeypatch):
+def test_submit_request_repairs_legacy_schema_and_redirects_to_login_hub(tmp_path, monkeypatch):
     database_path = tmp_path / "legacy-submit.db"
     connection = sqlite3.connect(database_path)
     connection.execute(
@@ -432,35 +432,21 @@ def test_submit_request_repairs_legacy_schema_and_succeeds(tmp_path, monkeypatch
     )
 
     assert response.status_code == 302
-    assert "/submit/success/" in response.headers["Location"]
+    assert response.headers["Location"].endswith("/")
 
     with app.app_context():
-        submission = Submission.query.filter_by(student_name="旧库学生").one()
-        assert submission.problem_url == "http://noi.openjudge.cn/ch0107/01/"
-        assert submission.public_id
+        assert Submission.query.count() == 0
 
 
-def test_submit_retries_after_database_repair_on_first_commit_failure(app, client, monkeypatch):
-    original_commit = db.session.commit
-    state = {"commit_calls": 0, "repair_calls": 0}
-
-    def flaky_commit():
-        state["commit_calls"] += 1
-        if state["commit_calls"] == 1:
-            raise sqlalchemy.exc.ProgrammingError(
-                "INSERT INTO submissions ...",
-                {},
-                Exception("null value in column id violates not-null constraint"),
-            )
-        return original_commit()
-
-    def fake_ensure_database_schema(current_app, force=False):
-        state["repair_calls"] += 1
-        assert force is True
-
-    monkeypatch.setattr("src.app.routes.public.db.session.commit", flaky_commit)
-    monkeypatch.setattr("src.app.routes.public.ensure_database_schema", fake_ensure_database_schema)
-    monkeypatch.setattr("src.app.routes.public._sync_problem_snapshot", lambda submission: None)
+def test_submit_post_does_not_attempt_persistence_or_queueing_when_login_is_required(app, client, monkeypatch):
+    monkeypatch.setattr(
+        "src.app.routes.public._persist_submission",
+        lambda submission: (_ for _ in ()).throw(AssertionError("不应再走匿名保存链路")),
+    )
+    monkeypatch.setattr(
+        "src.app.routes.public._sync_problem_snapshot",
+        lambda submission: (_ for _ in ()).throw(AssertionError("不应再走匿名后台链路")),
+    )
 
     response = client.post(
         "/submit",
@@ -473,46 +459,14 @@ def test_submit_retries_after_database_repair_on_first_commit_failure(app, clien
     )
 
     assert response.status_code == 302
-    assert state["repair_calls"] == 1
-    assert state["commit_calls"] == 2
+    assert response.headers["Location"].endswith("/")
 
     with app.app_context():
-        submission = Submission.query.filter_by(student_name="重试学生").one()
-        assert submission.public_id
+        assert Submission.query.count() == 0
 
 
-def test_submit_falls_back_to_explicit_id_when_schema_repair_cannot_fix(app, client, monkeypatch):
-    original_commit = db.session.commit
-    state = {"commit_calls": 0, "repair_calls": 0, "allocated_ids": 0}
-
-    def flaky_commit():
-        state["commit_calls"] += 1
-        if state["commit_calls"] <= 2:
-            raise sqlalchemy.exc.ProgrammingError(
-                "INSERT INTO submissions ...",
-                {},
-                Exception("null value in column id violates not-null constraint"),
-            )
-        return original_commit()
-
-    def broken_ensure_database_schema(current_app, force=False):
-        state["repair_calls"] += 1
-        raise sqlalchemy.exc.ProgrammingError(
-            "ALTER TABLE submissions ...",
-            {},
-            Exception("permission denied for table submissions"),
-        )
-
-    def fake_allocate_submission_id():
-        state["allocated_ids"] += 1
-        return 99
-
-    monkeypatch.setattr("src.app.routes.public.db.session.commit", flaky_commit)
-    monkeypatch.setattr("src.app.routes.public.ensure_database_schema", broken_ensure_database_schema)
-    monkeypatch.setattr("src.app.routes.public._allocate_submission_id", fake_allocate_submission_id)
-    monkeypatch.setattr("src.app.routes.public._sync_submission_id_sequence_best_effort", lambda: None)
-    monkeypatch.setattr("src.app.routes.public._sync_problem_snapshot", lambda submission: None)
-
+def test_submit_post_follow_redirects_shows_login_required_message(client):
+    
     response = client.post(
         "/submit",
         data={
@@ -520,15 +474,8 @@ def test_submit_falls_back_to_explicit_id_when_schema_repair_cannot_fix(app, cli
             "problem_url": "http://noi.openjudge.cn/ch0107/01/",
             "code_text": "int main() { return 0; }",
         },
-        follow_redirects=False,
+        follow_redirects=True,
     )
 
-    assert response.status_code == 302
-    assert state["repair_calls"] == 1
-    assert state["allocated_ids"] == 1
-    assert state["commit_calls"] == 3
-
-    with app.app_context():
-        submission = Submission.query.filter_by(student_name="显式主键学生").one()
-        assert submission.id == 99
-        assert submission.public_id
+    assert response.status_code == 200
+    assert "请先登录后再使用提交功能".encode() in response.data

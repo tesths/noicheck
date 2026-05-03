@@ -1,0 +1,439 @@
+from bs4 import BeautifulSoup
+
+from src.app.extensions import db
+from src.app.models import AdminUser, DiagnosisRun, ProblemSnapshot, Submission, StudentUser
+from src.app.services.auth import hash_password
+
+
+def _login_admin(client) -> None:
+    response = client.post(
+        "/admin/login",
+        data={"username": "admin", "password": "secret123"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+
+
+def _login_student(client, nickname: str, password: str) -> None:
+    response = client.post(
+        "/student/login",
+        data={"nickname": nickname, "password": password},
+        follow_redirects=False,
+    )
+    assert response.status_code == 302
+
+
+def _student_detail_csrf_token(client, public_id: str) -> str:
+    page = client.get(f"/student/submissions/{public_id}")
+    return BeautifulSoup(page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
+
+
+def test_student_pages_require_login(client):
+    response = client.get("/student/submissions", follow_redirects=False)
+
+    assert response.status_code == 302
+    assert "/student/login" in response.headers["Location"]
+
+
+def test_admin_can_create_reset_and_disable_student(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        db.session.add(admin)
+        db.session.commit()
+
+    _login_admin(client)
+    create_response = client.post(
+        "/admin/students",
+        data={"nickname": "stu01", "password": "pw-001"},
+        follow_redirects=False,
+    )
+
+    assert create_response.status_code == 302
+
+    with app.app_context():
+        student = StudentUser.query.filter_by(nickname="stu01").one()
+        student_id = student.id
+
+    _login_student(client, "stu01", "pw-001")
+
+    _login_admin(client)
+    reset_response = client.post(
+        f"/admin/students/{student_id}/reset-password",
+        data={"password": "pw-002"},
+        follow_redirects=False,
+    )
+    assert reset_response.status_code == 302
+
+    client.post("/student/logout", data={}, follow_redirects=False)
+    relogin_response = client.post(
+        "/student/login",
+        data={"nickname": "stu01", "password": "pw-001"},
+        follow_redirects=False,
+    )
+    assert relogin_response.status_code == 401
+
+    _login_student(client, "stu01", "pw-002")
+    _login_admin(client)
+    toggle_response = client.post(
+        f"/admin/students/{student_id}/toggle-active",
+        data={},
+        follow_redirects=False,
+    )
+    assert toggle_response.status_code == 302
+
+    client.post("/student/logout", data={}, follow_redirects=False)
+    disabled_login = client.post(
+        "/student/login",
+        data={"nickname": "stu01", "password": "pw-002"},
+        follow_redirects=False,
+    )
+    assert disabled_login.status_code == 401
+
+
+def test_student_new_page_shows_two_flow_options(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="小明", password_hash=hash_password("pass-123"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "小明", "pass-123")
+    response = client.get("/student/submissions/new")
+
+    assert response.status_code == 200
+    assert "自己提交".encode() in response.data
+    assert "提交给老师".encode() in response.data
+
+
+def test_student_self_check_submission_queues_student_hint_job(app, client, monkeypatch):
+    def fail_if_fetch_called(self, url):
+        raise AssertionError("学生提交接口不应同步抓题")
+
+    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fail_if_fetch_called)
+
+    with app.app_context():
+        student = StudentUser(nickname="小明", password_hash=hash_password("pass-123"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "小明", "pass-123")
+    response = client.post(
+        "/student/submissions/new/self-check",
+        data={
+            "problem_url": "http://noi.openjudge.cn/ch0107/01/",
+            "code_text": "#include <iostream>\nint main() { return 0; }",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/student/submissions/" in response.headers["Location"]
+
+    with app.app_context():
+        submission = Submission.query.one()
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert submission.student_name == "小明"
+        assert submission.student_user.nickname == "小明"
+        assert submission.submission_mode == "self_check"
+        assert submission.fetch_status == "queued"
+        assert submission.student_hint_status == "queued"
+        assert submission.diagnosis_status == "pending"
+        assert jobs == [
+            {
+                "job_type": "fetch-and-student-diagnose",
+                "submission_public_id": submission.public_id,
+                "requested_by": "student",
+            }
+        ]
+
+
+def test_student_teacher_review_submission_queues_teacher_diagnosis_job(app, client, monkeypatch):
+    def fail_if_fetch_called(self, url):
+        raise AssertionError("学生提交接口不应同步抓题")
+
+    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fail_if_fetch_called)
+
+    with app.app_context():
+        student = StudentUser(nickname="小红", password_hash=hash_password("pass-456"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "小红", "pass-456")
+    response = client.post(
+        "/student/submissions/new/teacher-review",
+        data={
+            "problem_url": "http://noi.openjudge.cn/ch0107/02/",
+            "code_text": "#include <iostream>\nint main() { return 0; }",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/student/submissions/" in response.headers["Location"]
+
+    with app.app_context():
+        submission = Submission.query.one()
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert submission.student_name == "小红"
+        assert submission.student_user.nickname == "小红"
+        assert submission.submission_mode == "teacher_review"
+        assert submission.fetch_status == "queued"
+        assert submission.student_hint_status == "pending"
+        assert submission.diagnosis_status == "queued"
+        assert jobs == [
+            {
+                "job_type": "fetch-and-diagnose",
+                "submission_public_id": submission.public_id,
+                "requested_by": "student",
+            }
+        ]
+
+
+def test_student_list_and_detail_are_scoped_to_owner(app, client):
+    with app.app_context():
+        owner = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        other = StudentUser(nickname="other", password_hash=hash_password("pw-2"))
+        owned_submission = Submission(
+            student_name="owner",
+            student_user=owner,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        other_submission = Submission(
+            student_name="other",
+            student_user=other,
+            problem_url="http://noi.openjudge.cn/ch0107/02/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        db.session.add_all([owner, other, owned_submission, other_submission])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=owned_submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "循环边界还要再检查。",
+                    "confidence": "medium",
+                    "possible_issues": [
+                        {
+                            "title": "边界可能偏一位",
+                            "location": "for 循环结束条件",
+                            "evidence": "最后一个字符可能没有被处理。",
+                            "explanation": "这样会漏掉尾部数字。",
+                            "suggested_fix": "重新检查循环终止条件和下标变化。",
+                        }
+                    ],
+                    "next_step_checks": ["手算 abc123 和 0 的结果。"],
+                    "encouragement_or_strategy": "先别急着重写，先把样例手推一遍。",
+                },
+                summary_text="循环边界还要再检查。",
+            )
+        )
+        db.session.add(
+            DiagnosisRun(
+                submission=owned_submission,
+                audience="teacher",
+                model_name="deepseek-v4-pro",
+                prompt_version="v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "教师版完整诊断",
+                    "confidence": "high",
+                    "missing_context": [],
+                    "possible_issues": [],
+                    "teacher_talking_points": [],
+                    "next_step_checks": [],
+                    "correct_program": "#include <iostream>\nint main(){return 0;}",
+                },
+                summary_text="教师版完整诊断",
+            )
+        )
+        db.session.commit()
+        owned_public_id = owned_submission.public_id
+        other_public_id = other_submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    list_response = client.get("/student/submissions")
+
+    assert list_response.status_code == 200
+    assert "owner".encode() in list_response.data
+    assert "other".encode() not in list_response.data
+    assert "自己提交".encode() in list_response.data
+
+    detail_response = client.get(f"/student/submissions/{owned_public_id}")
+    assert detail_response.status_code == 200
+    assert "循环边界还要再检查".encode() in detail_response.data
+    assert "边界可能偏一位".encode() in detail_response.data
+    assert "教师版完整诊断".encode() not in detail_response.data
+    assert "correct_program".encode() not in detail_response.data
+    assert "正确的完整程序".encode() not in detail_response.data
+
+    forbidden_response = client.get(f"/student/submissions/{other_public_id}")
+    assert forbidden_response.status_code == 404
+
+
+def test_teacher_review_detail_hides_teacher_result_from_student(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/03/",
+            code_text="int main() { return 0; }",
+            submission_mode="teacher_review",
+            fetch_status="success",
+            student_hint_status="pending",
+            diagnosis_status="success",
+        )
+        db.session.add_all([student, submission])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="teacher",
+                model_name="deepseek-v4-pro",
+                prompt_version="v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "老师版完整诊断",
+                    "confidence": "high",
+                    "missing_context": [],
+                    "possible_issues": [],
+                    "teacher_talking_points": ["先看循环边界。"],
+                    "next_step_checks": ["手动代样例。"],
+                    "correct_program": "#include <iostream>\nint main(){return 0;}",
+                },
+                summary_text="老师版完整诊断",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    detail_response = client.get(f"/student/submissions/{public_id}")
+
+    assert detail_response.status_code == 200
+    assert "已提交给老师".encode() in detail_response.data
+    assert "老师版完整诊断".encode() not in detail_response.data
+    assert "正确的完整程序".encode() not in detail_response.data
+    assert "correct_program".encode() not in detail_response.data
+
+
+def test_admin_can_view_student_hint_for_self_check_submission(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/04/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [
+                        {
+                            "title": "边界可能偏一位",
+                            "location": "主循环结束条件",
+                            "evidence": "可能漏掉最后一个字符。",
+                            "explanation": "这样会让尾部数字没被统计。",
+                            "suggested_fix": "先手推一遍样例。",
+                        }
+                    ],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_admin(client)
+    list_response = client.get("/admin/submissions")
+    detail_response = client.get(f"/admin/submissions/{public_id}")
+
+    assert list_response.status_code == 200
+    assert "自己提交".encode() in list_response.data
+    assert "学生提示".encode() in list_response.data
+    assert detail_response.status_code == 200
+    assert "先检查循环边界".encode() in detail_response.data
+    assert "边界可能偏一位".encode() in detail_response.data
+
+
+def test_admin_can_queue_teacher_diagnosis_after_student_hint_succeeds(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+        )
+        db.session.add_all([admin, student, submission, snapshot])
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_admin(client)
+    response = client.post(
+        f"/admin/submissions/{public_id}/diagnose",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+
+    with app.app_context():
+        submission = Submission.query.filter_by(public_id=public_id).one()
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert submission.student_hint_status == "success"
+        assert submission.diagnosis_status == "queued"
+        assert jobs == [
+            {
+                "job_type": "diagnose-submission",
+                "submission_public_id": public_id,
+                "requested_by": "admin",
+            }
+        ]

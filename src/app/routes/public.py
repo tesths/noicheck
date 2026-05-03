@@ -71,9 +71,29 @@ def _build_submission(
         code_text=code_text,
         language="cpp",
         client_ip_hash=client_ip_hash,
+        submission_mode="teacher_review",
         fetch_status="pending",
         diagnosis_status="pending",
     )
+
+
+def _clone_submission_for_retry(submission: Submission) -> Submission:
+    cloned = _build_submission(
+        student_name=submission.student_name,
+        problem_url=submission.problem_url,
+        code_text=submission.code_text,
+        client_ip_hash=submission.client_ip_hash,
+    )
+    cloned.language = submission.language
+    cloned.problem_source = submission.problem_source
+    cloned.problem_title = submission.problem_title
+    cloned.problem_path = submission.problem_path
+    cloned.student_user_id = submission.student_user_id
+    cloned.submission_mode = submission.submission_mode
+    cloned.fetch_status = submission.fetch_status
+    cloned.student_hint_status = submission.student_hint_status
+    cloned.diagnosis_status = submission.diagnosis_status
+    return cloned
 
 
 def _submission_write_state() -> dict[str, bool]:
@@ -118,12 +138,7 @@ def _sync_submission_id_sequence_best_effort() -> None:
 
 
 def _persist_submission_with_explicit_id(submission: Submission) -> Submission:
-    retried_submission = _build_submission(
-        student_name=submission.student_name,
-        problem_url=submission.problem_url,
-        code_text=submission.code_text,
-        client_ip_hash=submission.client_ip_hash,
-    )
+    retried_submission = _clone_submission_for_retry(submission)
     retried_submission.id = _allocate_submission_id()
     db.session.add(retried_submission)
     db.session.commit()
@@ -152,12 +167,7 @@ def _persist_submission(submission: Submission) -> Submission:
         db.session.rollback()
         current_app.logger.exception("强制修复数据库失败，准备改用显式主键重试保存")
 
-    retried_submission = _build_submission(
-        student_name=submission.student_name,
-        problem_url=submission.problem_url,
-        code_text=submission.code_text,
-        client_ip_hash=submission.client_ip_hash,
-    )
+    retried_submission = _clone_submission_for_retry(submission)
     try:
         db.session.add(retried_submission)
         db.session.commit()
@@ -174,58 +184,13 @@ def _sync_problem_snapshot(submission: Submission) -> None:
 
 @public_bp.get("/")
 def home():
-    return redirect(url_for("public.submit"))
+    return render_template("home.html")
 
 
 @public_bp.route("/submit", methods=["GET", "POST"])
 def submit():
-    if request.method == "GET":
-        return render_template("submit.html")
-
-    form_data = {
-        "student_name": request.form.get("student_name", "").strip(),
-        "problem_url": request.form.get("problem_url", "").strip(),
-        "code_text": request.form.get("code_text", "").strip(),
-    }
-    errors = _validate_submission_form(form_data)
-    if errors:
-        for error in errors:
-            flash(error, "error")
-        return render_template("submit.html", form_data=form_data), 400
-
-    try:
-        normalized_problem_url = normalize_openjudge_url(form_data["problem_url"])
-    except ProblemFetchError as exc:
-        flash(str(exc), "error")
-        return render_template("submit.html", form_data=form_data), 400
-
-    client_ip_hash = hash_client_ip(request.headers.get("X-Forwarded-For", request.remote_addr))
-    if _check_rate_limit(client_ip_hash):
-        flash("提交过于频繁，请稍后再试。", "error")
-        return render_template("submit.html", form_data=form_data), 429
-
-    submission = _build_submission(
-        student_name=form_data["student_name"],
-        problem_url=normalized_problem_url,
-        code_text=form_data["code_text"],
-        client_ip_hash=client_ip_hash,
-    )
-    try:
-        submission = _persist_submission(submission)
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash("保存提交记录时失败，请稍后再试。", "error")
-        return render_template("submit.html", form_data=form_data), 500
-
-    try:
-        _sync_problem_snapshot(submission)
-    except (JobQueueError, SQLAlchemyError):
-        db.session.rollback()
-        current_app.logger.exception("提交后排队抓题和诊断失败")
-        flash("提交记录已保存，但后台分析排队失败，请稍后重试或联系老师。", "error")
-        return render_template("submit.html", form_data=form_data), 500
-
-    return redirect(url_for("public.submit_success", public_id=submission.public_id))
+    flash("请先登录后再使用提交功能。", "error")
+    return redirect(url_for("public.home"))
 
 
 @public_bp.get("/submit/success/<public_id>")

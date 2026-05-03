@@ -11,7 +11,8 @@ from ..services.auth import (
     logout_student,
     student_login_required,
 )
-from ..services.job_queue import JobMessage, JobQueueError, enqueue_job
+from ..services.job_queue import JobQueueError
+from ..services.jobs import enqueue_diagnosis_job, enqueue_student_hint_job
 from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
 
 student_bp = Blueprint("student", __name__, url_prefix="/student")
@@ -30,18 +31,122 @@ def _validate_submission_form(problem_url: str, code_text: str) -> list[str]:
     return errors
 
 
-def _build_submission(student_id: int, student_name: str, problem_url: str, code_text: str):
+def _build_submission(
+    student_id: int,
+    student_name: str,
+    problem_url: str,
+    code_text: str,
+    *,
+    submission_mode: str,
+):
     return Submission(
         student_name=student_name,
         student_user_id=student_id,
         problem_url=problem_url,
         code_text=code_text,
         language="cpp",
-        fetch_status="queued",
-        student_hint_status="queued",
+        submission_mode=submission_mode,
+        fetch_status="pending",
+        student_hint_status="pending",
         diagnosis_status="pending",
         client_ip_hash=hash_client_ip(request.headers.get("X-Forwarded-For", request.remote_addr)),
     )
+
+
+def _mode_copy(submission_mode: str) -> dict[str, str]:
+    if submission_mode == "self_check":
+        return {
+            "eyebrow": "学生端 · 自己提交",
+            "title": "提交给自己检查",
+            "description": "系统会先抓题，再生成只给提示、不直接给答案的学生版 AI 引导。",
+            "submit_label": "提交并获取 AI 提示",
+        }
+    return {
+        "eyebrow": "学生端 · 提交给老师",
+        "title": "提交给老师查看",
+        "description": "系统会自动生成老师版完整诊断，包含修改建议和正确程序，但这些内容只在老师端可见。",
+        "submit_label": "提交给老师",
+    }
+
+
+def _render_submission_form(*, student, submission_mode: str, form_data=None, status_code: int = 200):
+    rendered = render_template(
+        "student/submission_form.html",
+        student=student,
+        submission_mode=submission_mode,
+        form_data=form_data,
+        mode_copy=_mode_copy(submission_mode),
+    )
+    if status_code == 200:
+        return rendered
+    return rendered, status_code
+
+
+def _create_student_submission(*, submission_mode: str):
+    student = current_student()
+    form_data = {
+        "problem_url": request.form.get("problem_url", "").strip(),
+        "code_text": request.form.get("code_text", "").strip(),
+    }
+    errors = _validate_submission_form(form_data["problem_url"], form_data["code_text"])
+    if errors:
+        for error in errors:
+            flash(error, "error")
+        return _render_submission_form(
+            student=student,
+            submission_mode=submission_mode,
+            form_data=form_data,
+            status_code=400,
+        )
+
+    try:
+        normalized_problem_url = normalize_openjudge_url(form_data["problem_url"])
+    except ProblemFetchError as exc:
+        flash(str(exc), "error")
+        return _render_submission_form(
+            student=student,
+            submission_mode=submission_mode,
+            form_data=form_data,
+            status_code=400,
+        )
+
+    submission = _build_submission(
+        student_id=student.id,
+        student_name=student.nickname,
+        problem_url=normalized_problem_url,
+        code_text=form_data["code_text"],
+        submission_mode=submission_mode,
+    )
+    try:
+        db.session.add(submission)
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("保存提交记录时失败，请稍后再试。", "error")
+        return _render_submission_form(
+            student=student,
+            submission_mode=submission_mode,
+            form_data=form_data,
+            status_code=500,
+        )
+
+    try:
+        if submission_mode == "self_check":
+            enqueue_student_hint_job(submission, requested_by="student")
+        else:
+            enqueue_diagnosis_job(submission, requested_by="student")
+    except (JobQueueError, SQLAlchemyError):
+        db.session.rollback()
+        current_app.logger.exception("学生提交后排队后台任务失败")
+        flash("提交记录已保存，但后台分析排队失败，请稍后重试或联系老师。", "error")
+        return _render_submission_form(
+            student=student,
+            submission_mode=submission_mode,
+            form_data=form_data,
+            status_code=500,
+        )
+
+    return redirect(url_for("student.submission_detail", public_id=submission.public_id))
 
 
 @student_bp.route("/login", methods=["GET", "POST"])
@@ -82,58 +187,29 @@ def submissions():
     return render_template("student/submissions.html", student=student, submissions=submissions)
 
 
-@student_bp.route("/submissions/new", methods=["GET", "POST"])
+@student_bp.get("/submissions/new")
 @student_login_required
 def submission_new():
     student = current_student()
+    return render_template("student/submission_new.html", student=student)
+
+
+@student_bp.route("/submissions/new/self-check", methods=["GET", "POST"])
+@student_login_required
+def submission_new_self_check():
+    student = current_student()
     if request.method == "GET":
-        return render_template("student/submission_new.html", student=student)
+        return _render_submission_form(student=student, submission_mode="self_check")
+    return _create_student_submission(submission_mode="self_check")
 
-    form_data = {
-        "problem_url": request.form.get("problem_url", "").strip(),
-        "code_text": request.form.get("code_text", "").strip(),
-    }
-    errors = _validate_submission_form(form_data["problem_url"], form_data["code_text"])
-    if errors:
-        for error in errors:
-            flash(error, "error")
-        return render_template("student/submission_new.html", student=student, form_data=form_data), 400
 
-    try:
-        normalized_problem_url = normalize_openjudge_url(form_data["problem_url"])
-    except ProblemFetchError as exc:
-        flash(str(exc), "error")
-        return render_template("student/submission_new.html", student=student, form_data=form_data), 400
-
-    submission = _build_submission(
-        student_id=student.id,
-        student_name=student.nickname,
-        problem_url=normalized_problem_url,
-        code_text=form_data["code_text"],
-    )
-    try:
-        db.session.add(submission)
-        db.session.commit()
-    except SQLAlchemyError:
-        db.session.rollback()
-        flash("保存提交记录时失败，请稍后再试。", "error")
-        return render_template("student/submission_new.html", student=student, form_data=form_data), 500
-
-    try:
-        enqueue_job(
-            JobMessage(
-                job_type="fetch-and-student-diagnose",
-                submission_public_id=submission.public_id,
-                requested_by="student",
-            )
-        )
-    except (JobQueueError, SQLAlchemyError):
-        db.session.rollback()
-        current_app.logger.exception("学生提交后排队抓题和提示失败")
-        flash("提交记录已保存，但后台分析排队失败，请稍后重试或联系老师。", "error")
-        return render_template("student/submission_new.html", student=student, form_data=form_data), 500
-
-    return redirect(url_for("student.submission_detail", public_id=submission.public_id))
+@student_bp.route("/submissions/new/teacher-review", methods=["GET", "POST"])
+@student_login_required
+def submission_new_teacher_review():
+    student = current_student()
+    if request.method == "GET":
+        return _render_submission_form(student=student, submission_mode="teacher_review")
+    return _create_student_submission(submission_mode="teacher_review")
 
 
 @student_bp.get("/submissions/<public_id>")

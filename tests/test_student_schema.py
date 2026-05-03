@@ -96,6 +96,6 @@ def test_bootstrap_repairs_student_schema_for_legacy_database(tmp_path):
         diagnosis_run = DiagnosisRun.query.one()
 
         assert submission.student_user_id is None
+        assert submission.submission_mode == "teacher_review"
         assert submission.student_hint_status == "pending"
         assert diagnosis_run.audience == "teacher"
-

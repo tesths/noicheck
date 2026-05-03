@@ -16,6 +16,11 @@ _STATUS_LABELS = {
     "failed": "失败",
 }
 
+_SUBMISSION_MODE_LABELS = {
+    "self_check": "自己提交",
+    "teacher_review": "提交给老师",
+}
+
 
 def _status_label(value: str) -> str:
     return _STATUS_LABELS.get(value, value)
@@ -35,6 +40,7 @@ class Submission(db.Model):
     language = db.Column(db.String(16), nullable=False, default="cpp")
     code_text = db.Column(db.Text, nullable=False)
     client_ip_hash = db.Column(db.String(64), nullable=True, index=True)
+    submission_mode = db.Column(db.String(32), nullable=False, default="teacher_review")
     fetch_status = db.Column(db.String(16), nullable=False, default="pending")
     student_hint_status = db.Column(db.String(16), nullable=False, default="pending")
     diagnosis_status = db.Column(db.String(16), nullable=False, default="pending")
@@ -71,9 +77,23 @@ class Submission(db.Model):
         return _status_label(self.fetch_status)
 
     @property
+    def submission_mode_label(self) -> str:
+        return _SUBMISSION_MODE_LABELS.get(self.submission_mode, self.submission_mode)
+
+    @property
     def student_hint_status_label(self) -> str:
         return _status_label(self.student_hint_status)
 
     @property
     def diagnosis_status_label(self) -> str:
         return _status_label(self.diagnosis_status)
+
+    @property
+    def result_status(self) -> str:
+        if self.submission_mode == "self_check":
+            return self.student_hint_status
+        return self.diagnosis_status
+
+    @property
+    def result_status_label(self) -> str:
+        return _status_label(self.result_status)

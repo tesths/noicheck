@@ -4,24 +4,16 @@
 <section class="hero-card">
   <div class="hero-copy">
     <p class="eyebrow">学生端</p>
-    <h1>新建提交</h1>
-    <p>系统会自动绑定当前学生账号，先抓取题面，再进入学生版提示流程。</p>
+    <h1>选择提交流程</h1>
+    <p>你可以先自己拿 AI 提示排查，也可以直接把程序提交给老师查看。</p>
   </div>
-  <form class="panel form-panel" method="post">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field">
-      <span>当前学生</span>
-      <input type="text" value="{{ student.nickname }}" disabled>
-    </label>
-    <label class="field">
-      <span>题目链接</span>
-      <input type="url" name="problem_url" maxlength="500" required placeholder="http://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
-    </label>
-    <label class="field">
-      <span>C++ 代码</span>
-      <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
-    </label>
-    <button class="primary-button" type="submit">提交并获取提示</button>
-  </form>
+  <div class="panel form-panel">
+    <p class="eyebrow">当前学生</p>
+    <h2>{{ student.nickname }}</h2>
+    <div class="panel-actions">
+      <a class="primary-button" href="{{ url_for('student.submission_new_self_check') }}">自己提交</a>
+      <a class="ghost-button" href="{{ url_for('student.submission_new_teacher_review') }}">提交给老师</a>
+    </div>
+  </div>
 </section>
 {% endblock %}

@@ -4,17 +4,18 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}NOI 错题诊断{% endblock %}</title>
+    <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
   <body>
     <header class="site-header">
       <div class="wrap header-content">
-        <a class="brand" href="{{ url_for('public.submit') }}">NOI 错题诊断</a>
+        <a class="brand" href="{{ url_for('public.home') }}">NOI 错题诊断</a>
         <nav class="header-nav">
-          <a href="{{ url_for('public.submit') }}">学生提交</a>
+          <a href="{{ url_for('public.home') }}">登录入口</a>
           {% if current_student() %}
             <a href="{{ url_for('student.submissions') }}">我的提交</a>
-            <a href="{{ url_for('student.submission_new') }}">新建提交</a>
+            <a href="{{ url_for('student.submission_new') }}">选择提交流程</a>
             <form class="nav-form" method="post" action="{{ url_for('student.logout') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="nav-button" type="submit">退出学生端</button>
