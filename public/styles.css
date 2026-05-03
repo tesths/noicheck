@@ -65,6 +65,27 @@ a {
 .header-nav {
   display: flex;
   gap: 18px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.nav-form {
+  margin: 0;
+}
+
+.nav-button {
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.nav-button:hover,
+.header-nav a:hover,
+.text-link:hover {
+  text-decoration: underline;
 }
 
 .header-nav a,
@@ -238,6 +259,41 @@ textarea {
   gap: 12px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.row-actions form {
+  margin: 0;
+}
+
+.row-reset-form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.mini-button {
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.admin-reset-input {
+  width: 150px;
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.compact-copy {
+  padding: 0;
+}
+
+.spaced-table {
+  margin-top: 24px;
 }
 
 .table-shell {

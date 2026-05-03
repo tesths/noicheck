@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}学生管理 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">教师后台</p>
+      <h1>学生管理</h1>
+    </div>
+    <div class="panel-actions">
+      <a class="text-link" href="{{ url_for('admin.submission_list') }}">提交列表</a>
+      <form method="post" action="{{ url_for('admin.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="ghost-button" type="submit">退出</button>
+      </form>
+    </div>
+  </div>
+
+  <form class="form-panel" method="post" action="{{ url_for('admin.create_student') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="hero-copy compact-copy">
+      <p class="eyebrow">新建学生</p>
+      <p>创建学生账号后，可直接用昵称和密码登录学生端。</p>
+    </div>
+    <label class="field">
+      <span>学生昵称</span>
+      <input type="text" name="nickname" maxlength="80" required value="{{ nickname if nickname else '' }}">
+    </label>
+    <label class="field">
+      <span>初始密码</span>
+      <input type="password" name="password" required>
+    </label>
+    <button class="primary-button" type="submit">保存学生</button>
+  </form>
+
+  {% if students %}
+    <div class="table-shell spaced-table">
+      <table>
+        <thead>
+          <tr>
+            <th>昵称</th>
+            <th>状态</th>
+            <th>创建时间</th>
+            <th>上次登录</th>
+            <th>提交数</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for student in students %}
+            <tr>
+              <td>{{ student.nickname }}</td>
+              <td>
+                <span class="status {% if student.is_active %}status-success{% else %}status-failed{% endif %}">
+                  {{ "已启用" if student.is_active else "已停用" }}
+                </span>
+              </td>
+              <td>{{ student.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td>{{ student.last_login_at.strftime("%Y-%m-%d %H:%M") if student.last_login_at else "-" }}</td>
+              <td>{{ student.submissions|length }}</td>
+              <td>
+                <div class="row-actions">
+                  <form class="row-reset-form" method="post" action="{{ url_for('admin.reset_student_password', student_id=student.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input class="admin-reset-input" type="password" name="password" placeholder="新密码" required>
+                    <button class="ghost-button mini-button" type="submit">重置密码</button>
+                  </form>
+                  <form method="post" action="{{ url_for('admin.toggle_student_active', student_id=student.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button class="ghost-button mini-button" type="submit">
+                      {{ "停用" if student.is_active else "启用" }}
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty-state" style="margin-top: 24px;">还没有学生账号。</p>
+  {% endif %}
+</section>
+{% endblock %}

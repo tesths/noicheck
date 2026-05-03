@@ -12,7 +12,22 @@
         <a class="brand" href="{{ url_for('public.submit') }}">NOI 错题诊断</a>
         <nav class="header-nav">
           <a href="{{ url_for('public.submit') }}">学生提交</a>
-          <a href="{{ url_for('admin.submission_list') }}">教师后台</a>
+          {% if current_student() %}
+            <a href="{{ url_for('student.submissions') }}">我的提交</a>
+            <a href="{{ url_for('student.submission_new') }}">新建提交</a>
+            <form class="nav-form" method="post" action="{{ url_for('student.logout') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button class="nav-button" type="submit">退出学生端</button>
+            </form>
+          {% else %}
+            <a href="{{ url_for('student.login') }}">学生登录</a>
+          {% endif %}
+          {% if current_user.is_authenticated %}
+            <a href="{{ url_for('admin.submission_list') }}">教师后台</a>
+            <a href="{{ url_for('admin.student_list') }}">学生管理</a>
+          {% else %}
+            <a href="{{ url_for('admin.login') }}">教师后台</a>
+          {% endif %}
         </nav>
       </div>
     </header>

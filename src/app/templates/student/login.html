@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}学生登录 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="auth-shell">
+  <form class="panel auth-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <p class="eyebrow">学生端</p>
+    <h1>登录</h1>
+    <label class="field">
+      <span>昵称</span>
+      <input type="text" name="nickname" required value="{{ nickname if nickname else '' }}">
+    </label>
+    <label class="field">
+      <span>密码</span>
+      <input type="password" name="password" required>
+    </label>
+    <button class="primary-button" type="submit">进入学生端</button>
+  </form>
+</section>
+{% endblock %}

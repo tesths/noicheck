@@ -1,6 +1,7 @@
 # Task Queue
 
-- [进行中] 实现学生登录、教师后台学生管理与学生端 AI 判题提示（只给引导，不给正确答案）
+- [待确认] 实现学生登录、教师后台学生管理与学生端 AI 判题提示（只给引导，不给正确答案）
+- [待确认] 学生版 AI 提示链路：新增学生提示 schema / 学生版 DeepSeek 诊断 / 后台任务 `fetch-and-student-diagnose`
 - [待确认] 实现 NOI 错题诊断系统 v1：Flask + Vercel + 本地 SQLite / 线上 Zeabur Postgres + OpenJudge 抓题 + DeepSeek 诊断 + 教师后台登录
 - [待确认] 调研免费可部署多个 Python 项目的平台，关注免费额度、休眠策略、自定义域名与多服务支持
 - [进行中] 改回同步流程：学生提交时同步抓题，教师在后台点击后再进行 AI 分析

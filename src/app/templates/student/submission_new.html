@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}新建提交 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="hero-card">
+  <div class="hero-copy">
+    <p class="eyebrow">学生端</p>
+    <h1>新建提交</h1>
+    <p>系统会自动绑定当前学生账号，先抓取题面，再进入学生版提示流程。</p>
+  </div>
+  <form class="panel form-panel" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label class="field">
+      <span>当前学生</span>
+      <input type="text" value="{{ student.nickname }}" disabled>
+    </label>
+    <label class="field">
+      <span>题目链接</span>
+      <input type="url" name="problem_url" maxlength="500" required placeholder="http://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
+    </label>
+    <label class="field">
+      <span>C++ 代码</span>
+      <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
+    </label>
+    <button class="primary-button" type="submit">提交并获取提示</button>
+  </form>
+</section>
+{% endblock %}

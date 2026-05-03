@@ -8,7 +8,9 @@ from .extensions import csrf, db, login_manager, migrate
 from .routes.admin import admin_bp
 from .routes.internal import internal_bp
 from .routes.public import public_bp
+from .routes.student import student_bp
 from .services.auth import register_auth_commands
+from .services.auth import current_student
 
 
 def create_app(config_object: type[Config] | None = None) -> Flask:
@@ -24,8 +26,13 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
 
     app.register_blueprint(public_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(student_bp)
     app.register_blueprint(internal_bp)
     register_auth_commands(app)
+
+    @app.context_processor
+    def _inject_student_context() -> dict[str, object]:
+        return {"current_student": current_student}
 
     with app.app_context():
         bootstrap_app(app)
