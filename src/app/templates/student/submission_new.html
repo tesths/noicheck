@@ -1,42 +1,19 @@
 {% extends "base.html" %}
 {% block title %}新建提交 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="hero-card showcase-stage">
+<section class="hero-card">
   <div class="hero-copy">
     <p class="eyebrow">学生端</p>
     <h1>选择提交流程</h1>
-    <p class="lead">你可以先自己拿 AI 提示排查，也可以直接把程序提交给老师查看。</p>
-    <dl class="showcase-metrics">
-      <div>
-        <dt>自查模式</dt>
-        <dd>拿到引导式提示，适合先独立修题。</dd>
-      </div>
-      <div>
-        <dt>老师模式</dt>
-        <dd>直接进入教师后台，适合课堂讲评和复盘。</dd>
-      </div>
-      <div>
-        <dt>统一记录</dt>
-        <dd>两种流程都会保留提交、状态和后续追踪。</dd>
-      </div>
-    </dl>
+    <p>你可以先自己拿 AI 提示排查，也可以直接把程序提交给老师查看。</p>
   </div>
-  <div class="showcase-aside">
-    <article class="panel form-panel">
-      <p class="eyebrow">当前学生</p>
-      <h2>{{ student.nickname }}</h2>
-      <div class="showcase-actions">
-        <a class="primary-button" href="{{ url_for('student.submission_new_self_check') }}">自己提交</a>
-        <a class="ghost-button" href="{{ url_for('student.submission_new_teacher_review') }}">提交给老师</a>
-      </div>
-    </article>
-    <article class="panel">
-      <p class="eyebrow">怎么选</p>
-      <ul class="timeline-list">
-        <li><strong>先自查：</strong>你想保留独立思考空间，先看线索再改代码。</li>
-        <li><strong>交老师：</strong>你想让老师直接看到完整题面、代码和诊断结果。</li>
-      </ul>
-    </article>
+  <div class="panel form-panel">
+    <p class="eyebrow">当前学生</p>
+    <h2>{{ student.nickname }}</h2>
+    <div class="panel-actions">
+      <a class="primary-button" href="{{ url_for('student.submission_new_self_check') }}">自己提交</a>
+      <a class="ghost-button" href="{{ url_for('student.submission_new_teacher_review') }}">提交给老师</a>
+    </div>
   </div>
 </section>
 {% endblock %}

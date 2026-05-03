@@ -1,61 +1,46 @@
 {% extends "base.html" %}
 {% block title %}我的提交 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="workspace-stack">
-  <article class="panel workspace-banner">
-    <div class="banner-header">
-      <div class="hero-copy compact-copy">
-        <p class="eyebrow">学生端</p>
-        <h1>{{ student.nickname }} 的提交</h1>
-        <p>统一查看自己所有提交的抓题状态、AI 处理进度和结果详情。</p>
-      </div>
-      <div class="info-pills">
-        <span class="info-pill">当前学生 {{ student.nickname }}</span>
-        <span class="info-pill">共 {{ submissions|length }} 条记录</span>
-      </div>
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">学生端</p>
+      <h1>{{ student.nickname }} 的提交</h1>
     </div>
     <div class="panel-actions">
       <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
     </div>
-  </article>
+  </div>
 
-  <section class="panel data-panel">
-    <div class="panel-header">
-      <div>
-        <p class="eyebrow">提交列表</p>
-        <h2>按时间追踪每一次提交</h2>
-      </div>
-    </div>
-    {% if submissions %}
-      <div class="table-shell">
-        <table>
-          <thead>
+  {% if submissions %}
+    <div class="table-shell">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>类型</th>
+            <th>题目</th>
+            <th>抓题</th>
+            <th>结果</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for submission in submissions %}
             <tr>
-              <th>时间</th>
-              <th>类型</th>
-              <th>题目</th>
-              <th>抓题</th>
-              <th>结果</th>
-              <th></th>
+              <td>{{ submission.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+              <td>{{ submission.submission_mode_label }}</td>
+              <td>{{ submission.problem_title or submission.problem_path or submission.problem_url }}</td>
+              <td><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></td>
+              <td><span class="status status-{{ submission.result_status }}">{{ submission.result_status_label }}</span></td>
+              <td><a class="text-link" href="{{ url_for('student.submission_detail', public_id=submission.public_id) }}">查看详情</a></td>
             </tr>
-          </thead>
-          <tbody>
-            {% for submission in submissions %}
-              <tr>
-                <td>{{ submission.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
-                <td>{{ submission.submission_mode_label }}</td>
-                <td>{{ submission.problem_title or submission.problem_path or submission.problem_url }}</td>
-                <td><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></td>
-                <td><span class="status status-{{ submission.result_status }}">{{ submission.result_status_label }}</span></td>
-                <td><a class="text-link" href="{{ url_for('student.submission_detail', public_id=submission.public_id) }}">查看详情</a></td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    {% else %}
-      <p class="empty-state">还没有提交，先新建一条吧。</p>
-    {% endif %}
-  </section>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="empty-state">还没有提交，先新建一条吧。</p>
+  {% endif %}
 </section>
 {% endblock %}
