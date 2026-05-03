@@ -5,7 +5,7 @@ import sqlalchemy.exc
 
 from src.app import create_app
 from src.app.extensions import db
-from src.app.models import AdminUser, Submission
+from src.app.models import AdminUser, StudentUser, Submission
 from src.app.services.auth import authenticate_admin, hash_client_ip, hash_password, verify_password
 
 
@@ -381,6 +381,53 @@ def test_request_path_repairs_schema_missing_core_submission_columns(tmp_path, m
         assert repaired_row.student_name == ""
         assert repaired_row.problem_url == ""
         assert repaired_row.code_text == ""
+
+
+def test_bootstrap_repairs_legacy_student_users_schema(tmp_path):
+    database_path = tmp_path / "legacy-students.db"
+    connection = sqlite3.connect(database_path)
+    connection.execute(
+        """
+        CREATE TABLE student_users (
+            id INTEGER PRIMARY KEY,
+            nickname VARCHAR(80) NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            is_active BOOLEAN NOT NULL,
+            created_at DATETIME NOT NULL,
+            last_login_at DATETIME
+        )
+        """
+    )
+    connection.execute(
+        """
+        INSERT INTO student_users (nickname, password_hash, is_active, created_at, last_login_at)
+        VALUES ('stu01', 'hash', 1, '2026-05-03 10:00:00', NULL)
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    class BootstrapConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{database_path}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = True
+        REQUIRE_PRODUCTION_ENV = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+
+    app = create_app(BootstrapConfig)
+    with app.app_context():
+        student = db.session.execute(db.select(StudentUser).filter_by(nickname="stu01")).scalar_one()
+        assert getattr(student, "real_name", None) == ""
 
 
 def test_submit_request_repairs_legacy_schema_and_redirects_to_login_hub(tmp_path, monkeypatch):

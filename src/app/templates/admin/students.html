@@ -20,11 +20,15 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="hero-copy compact-copy">
       <p class="eyebrow">新建学生</p>
-      <p>创建学生账号后，可直接用昵称和密码登录学生端。</p>
+      <p>创建学生账号后，学生用用户名和密码登录；真实姓名仅供老师后台识别。</p>
     </div>
     <label class="field">
-      <span>学生昵称</span>
+      <span>学生用户名</span>
       <input type="text" name="nickname" maxlength="80" required value="{{ nickname if nickname else '' }}">
+    </label>
+    <label class="field">
+      <span>真实姓名</span>
+      <input type="text" name="real_name" maxlength="80" required value="{{ real_name if real_name else '' }}">
     </label>
     <label class="field">
       <span>初始密码</span>
@@ -38,7 +42,8 @@
       <table>
         <thead>
           <tr>
-            <th>昵称</th>
+            <th>真实姓名</th>
+            <th>用户名</th>
             <th>状态</th>
             <th>创建时间</th>
             <th>上次登录</th>
@@ -49,6 +54,7 @@
         <tbody>
           {% for student in students %}
             <tr>
+              <td>{{ student.real_name or "-" }}</td>
               <td>{{ student.nickname }}</td>
               <td>
                 <span class="status {% if student.is_active %}status-success{% else %}status-failed{% endif %}">

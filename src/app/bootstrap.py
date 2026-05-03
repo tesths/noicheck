@@ -180,6 +180,7 @@ def _repair_legacy_schema(app: Flask) -> None:
         )
 
     _repair_legacy_diagnosis_runs_schema(app)
+    _repair_legacy_student_users_schema(app)
 
 
 def _repair_legacy_diagnosis_runs_schema(app: Flask) -> None:
@@ -200,6 +201,27 @@ def _repair_legacy_diagnosis_runs_schema(app: Flask) -> None:
 
         connection.execute(
             text("UPDATE diagnosis_runs SET audience = 'teacher' WHERE audience IS NULL OR audience = ''")
+        )
+
+
+def _repair_legacy_student_users_schema(app: Flask) -> None:
+    inspector = inspect(db.engine)
+    if "student_users" not in inspector.get_table_names():
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("student_users")}
+    if "real_name" in existing_columns:
+        return
+
+    dialect_name = db.engine.dialect.name
+    with db.engine.begin() as connection:
+        if dialect_name == "postgresql":
+            connection.execute(text("ALTER TABLE student_users ADD COLUMN IF NOT EXISTS real_name VARCHAR(80)"))
+        else:
+            connection.execute(text("ALTER TABLE student_users ADD COLUMN real_name VARCHAR(80)"))
+
+        connection.execute(
+            text("UPDATE student_users SET real_name = '' WHERE real_name IS NULL OR real_name = ''")
         )
 
 

@@ -104,23 +104,34 @@ def student_list():
 @login_required
 def create_student():
     nickname = request.form.get("nickname", "").strip()
+    real_name = request.form.get("real_name", "").strip()
     password = request.form.get("password", "")
-    if not nickname or not password:
-        flash("请填写学生昵称和密码。", "error")
+    if not nickname or not real_name or not password:
+        flash("请填写学生用户名、真实姓名和密码。", "error")
         students = StudentUser.query.order_by(StudentUser.created_at.desc()).all()
-        return render_template("admin/students.html", students=students, nickname=nickname), 400
+        return render_template(
+            "admin/students.html",
+            students=students,
+            nickname=nickname,
+            real_name=real_name,
+        ), 400
 
     try:
-        student = ensure_student_user(nickname=nickname, password=password)
+        student = ensure_student_user(nickname=nickname, real_name=real_name, password=password)
         db.session.add(student)
         db.session.commit()
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存学生信息失败，请稍后再试。", "error")
         students = StudentUser.query.order_by(StudentUser.created_at.desc()).all()
-        return render_template("admin/students.html", students=students, nickname=nickname), 500
+        return render_template(
+            "admin/students.html",
+            students=students,
+            nickname=nickname,
+            real_name=real_name,
+        ), 500
 
-    flash(f"学生 {nickname} 已保存。", "success")
+    flash(f"学生 {real_name}（{nickname}）已保存。", "success")
     return redirect(url_for("admin.student_list"))
 
 

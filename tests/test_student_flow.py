@@ -44,7 +44,7 @@ def test_admin_can_create_reset_and_disable_student(app, client):
     _login_admin(client)
     create_response = client.post(
         "/admin/students",
-        data={"nickname": "stu01", "password": "pw-001"},
+        data={"nickname": "stu01", "real_name": "张小明", "password": "pw-001"},
         follow_redirects=False,
     )
 
@@ -53,8 +53,14 @@ def test_admin_can_create_reset_and_disable_student(app, client):
     with app.app_context():
         student = StudentUser.query.filter_by(nickname="stu01").one()
         student_id = student.id
+        assert getattr(student, "real_name", None) == "张小明"
 
     _login_student(client, "stu01", "pw-001")
+
+    student_list_response = client.get("/admin/students")
+    assert student_list_response.status_code == 200
+    assert "张小明".encode() in student_list_response.data
+    assert "stu01".encode() in student_list_response.data
 
     _login_admin(client)
     reset_response = client.post(

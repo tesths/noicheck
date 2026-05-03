@@ -106,14 +106,15 @@ def ensure_admin_user(username: str, password: str) -> AdminUser:
     return AdminUser(username=username, password_hash=hash_password(password))
 
 
-def ensure_student_user(nickname: str, password: str) -> StudentUser:
+def ensure_student_user(nickname: str, password: str, real_name: str = "") -> StudentUser:
     existing = StudentUser.query.filter_by(nickname=nickname).first()
     if existing:
+        existing.real_name = real_name
         existing.password_hash = hash_password(password)
         existing.is_active = True
         return existing
 
-    return StudentUser(nickname=nickname, password_hash=hash_password(password))
+    return StudentUser(nickname=nickname, real_name=real_name, password_hash=hash_password(password))
 
 
 def register_auth_commands(app: Flask) -> None:
