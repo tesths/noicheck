@@ -7,6 +7,7 @@ from ..models import StudentUser, Submission
 from ..services.auth import authenticate_admin, ensure_student_user, hash_password, login_admin
 from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job
+from ..services.settings import ALLOWED_AI_MODELS, get_active_ai_model, set_active_ai_model
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -43,7 +44,12 @@ def logout():
 @login_required
 def submission_list():
     submissions = Submission.query.order_by(Submission.created_at.desc()).all()
-    return render_template("admin/submissions.html", submissions=submissions)
+    return render_template(
+        "admin/submissions.html",
+        submissions=submissions,
+        active_ai_model=get_active_ai_model(),
+        allowed_ai_models=ALLOWED_AI_MODELS,
+    )
 
 
 @admin_bp.get("/submissions/<public_id>")
@@ -68,6 +74,23 @@ def generate_diagnosis(public_id: str):
         flash("提交后台任务失败，请稍后再试。", "error")
 
     return redirect(url_for("admin.submission_detail", public_id=public_id))
+
+
+@admin_bp.post("/settings/ai-model")
+@login_required
+def update_ai_model():
+    model_name = request.form.get("model_name", "").strip()
+    try:
+        set_active_ai_model(model_name)
+        db.session.commit()
+        flash(f"当前模型已切换为 {model_name}。", "success")
+    except ValueError:
+        db.session.rollback()
+        flash("只能切换到 deepseek-v4-flash 或 deepseek-v4-pro。", "error")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("保存模型设置失败，请稍后再试。", "error")
+    return redirect(url_for("admin.submission_list"))
 
 
 @admin_bp.get("/students")

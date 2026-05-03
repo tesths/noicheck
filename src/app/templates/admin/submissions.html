@@ -16,6 +16,23 @@
     </div>
   </div>
 
+  <form class="form-panel" method="post" action="{{ url_for('admin.update_ai_model') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="hero-copy compact-copy">
+      <p class="eyebrow">AI 模型</p>
+      <p>当前生效模型：<strong>{{ active_ai_model }}</strong>。切换后会影响后续学生提示和老师诊断任务。</p>
+    </div>
+    <label class="field">
+      <span>选择模型</span>
+      <select name="model_name">
+        {% for model_name in allowed_ai_models %}
+          <option value="{{ model_name }}" {% if model_name == active_ai_model %}selected{% endif %}>{{ model_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="primary-button" type="submit">切换模型</button>
+  </form>
+
   {% if submissions %}
     <div class="table-shell">
       <table>

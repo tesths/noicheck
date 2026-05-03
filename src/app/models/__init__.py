@@ -3,6 +3,7 @@ from .diagnosis_run import DiagnosisRun
 from .problem_snapshot import ProblemSnapshot
 from .submission import Submission
 from .student_user import StudentUser
+from .system_setting import SystemSetting
 
 __all__ = [
     "AdminUser",
@@ -10,4 +11,5 @@ __all__ = [
     "ProblemSnapshot",
     "Submission",
     "StudentUser",
+    "SystemSetting",
 ]

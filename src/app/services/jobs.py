@@ -15,6 +15,7 @@ from .ai import (
 )
 from .job_queue import JobMessage, JobQueueError, enqueue_job
 from .problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError
+from .settings import get_active_ai_model
 
 FETCH_PROBLEM_JOB = "fetch-problem"
 DIAGNOSE_SUBMISSION_JOB = "diagnose-submission"
@@ -417,8 +418,4 @@ def _ai_config() -> dict[str, str]:
 
 
 def _ai_model_name() -> str:
-    return str(
-        current_app.config.get("AI_MODEL")
-        or current_app.config.get("DEEPSEEK_MODEL")
-        or "deepseek-v4-pro"
-    ).strip()
+    return get_active_ai_model()
