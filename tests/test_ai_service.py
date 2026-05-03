@@ -68,6 +68,9 @@ def test_deepseek_service_uses_simple_chat_completion():
     assert call["model"] == "deepseek-v4-pro"
     assert "reasoning_effort" not in call
     assert "extra_body" not in call
+    assert "只输出一个 JSON 对象" in call["messages"][0]["content"]
+    assert "不要输出 Markdown 代码块" in call["messages"][0]["content"]
+    assert "第一个非空字符必须是 {" in call["messages"][0]["content"]
     assert "题目描述" in call["messages"][1]["content"]
     assert "诊断原因" in call["messages"][1]["content"]
     assert "完整正确的 C++ 参考程序" in call["messages"][1]["content"]
@@ -116,6 +119,114 @@ def test_deepseek_service_accepts_loose_chinese_json_shape():
 
     assert result.result.overall_assessment == "程序没有删除后缀，只是直接输出原单词。"
     assert result.result.possible_issues[0].suggested_fix == "补上对 er、ly、ing 后缀的判断和截断。"
+
+
+def test_deepseek_service_accepts_json_wrapped_in_markdown_fence():
+    client = FakeClient()
+    client.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=(
+                        "```json\n"
+                        + json.dumps(
+                            {
+                                "overall_assessment": "程序没有删除后缀。",
+                                "possible_issues": [
+                                    {
+                                        "title": "缺少后缀判断",
+                                        "location": "主逻辑分支",
+                                        "evidence": "代码直接输出原字符串。",
+                                        "explanation": "没有按题意裁剪后缀。",
+                                        "suggested_fix": "补上后缀判断。",
+                                    }
+                                ],
+                                "correct_program": "#include <iostream>\nint main(){return 0;}",
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n```"
+                    )
+                )
+            )
+        ]
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://openrouter.ai/api/v1",
+        model_name="deepseek/deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.diagnose(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/20/",
+            problem_title="20:删除单词后缀",
+            description_text="按要求删除单词后缀。",
+            input_text="一个单词。",
+            output_text="删除后缀后的结果。",
+            sample_input_text="refer",
+            sample_output_text="ref",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    assert result.result.overall_assessment == "程序没有删除后缀。"
+
+
+def test_deepseek_service_accepts_json_with_prefix_and_suffix_text():
+    client = FakeClient()
+    client.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=(
+                        "下面是诊断结果：\n"
+                        + json.dumps(
+                            {
+                                "overall_assessment": "边界判断有误。",
+                                "possible_issues": [
+                                    {
+                                        "title": "循环边界错误",
+                                        "location": "for 循环结束条件",
+                                        "evidence": "可能漏掉最后一个字符。",
+                                        "explanation": "边界值时会少统计一次。",
+                                        "suggested_fix": "检查结束条件。",
+                                    }
+                                ],
+                                "correct_program": "#include <iostream>\nint main(){return 0;}",
+                            },
+                            ensure_ascii=False,
+                        )
+                        + "\n请老师参考。"
+                    )
+                )
+            )
+        ]
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://openrouter.ai/api/v1",
+        model_name="deepseek/deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.diagnose(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/20/",
+            problem_title="20:删除单词后缀",
+            description_text="按要求删除单词后缀。",
+            input_text="一个单词。",
+            output_text="删除后缀后的结果。",
+            sample_input_text="refer",
+            sample_output_text="ref",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    assert result.result.overall_assessment == "边界判断有误。"
 
 
 def test_deepseek_service_coerces_scalar_list_fields():

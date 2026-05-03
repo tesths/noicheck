@@ -7,8 +7,8 @@ from openai import OpenAI
 
 from ..schemas import DiagnosisResult, StudentHintResult
 
-PROMPT_VERSION = "v1"
-STUDENT_PROMPT_VERSION = "student-v1"
+PROMPT_VERSION = "v2"
+STUDENT_PROMPT_VERSION = "student-v2"
 
 
 class DiagnosisServiceError(Exception):
@@ -86,7 +86,7 @@ class DeepSeekDiagnosisService:
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         raw_content = response.choices[0].message.content or ""
         try:
-            parsed = json.loads(raw_content)
+            parsed = _parse_json_response(raw_content)
         except json.JSONDecodeError as exc:
             raise DiagnosisServiceError("模型返回的内容不是合法 JSON。") from exc
 
@@ -134,6 +134,7 @@ class DeepSeekDiagnosisService:
                 "overall_assessment, confidence, possible_issues, next_step_checks, encouragement_or_strategy。"
                 "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
                 "不要返回 correct_program，也不要在任何字段中写出完整参考程序。"
+                + self._build_output_contract(audience)
             )
         return (
             "请根据题目和学生程序，帮老师检查程序可能错在哪里。"
@@ -147,6 +148,7 @@ class DeepSeekDiagnosisService:
             "possible_issues, teacher_talking_points, next_step_checks, correct_program。"
             "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
             "correct_program 必须给出一份可以直接参考的完整正确 C++ 程序。"
+            + self._build_output_contract(audience)
         )
 
     def _build_user_prompt(self, payload: DiagnosisPayload, *, audience: str) -> str:
@@ -190,6 +192,21 @@ class DeepSeekDiagnosisService:
                 "程序：",
                 payload.code_text,
             ]
+        )
+
+    def _build_output_contract(self, audience: str) -> str:
+        if audience == "student":
+            return (
+                "你必须只输出一个 JSON 对象。"
+                "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
+                "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
+                '输出格式示例：{"overall_assessment":"...","confidence":"medium","possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
+            )
+        return (
+            "你必须只输出一个 JSON 对象。"
+            "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
+            "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
+            '输出格式示例：{"overall_assessment":"...","confidence":"medium","missing_context":[],"possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"teacher_talking_points":["..."],"next_step_checks":["..."],"correct_program":"..."}'
         )
 
 
@@ -326,3 +343,52 @@ def _normalize_confidence(value: Any) -> str:
     if text in {"low", "medium", "high"}:
         return text
     return "medium"
+
+
+def _parse_json_response(raw_content: str) -> Any:
+    stripped = raw_content.strip()
+    if not stripped:
+        raise json.JSONDecodeError("empty content", raw_content, 0)
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    candidate = _extract_first_json_object(stripped)
+    return json.loads(candidate)
+
+
+def _extract_first_json_object(text: str) -> str:
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("no json object found", text, 0)
+
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for index in range(start, len(text)):
+        char = text[index]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            depth += 1
+            continue
+        if char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+
+    raise json.JSONDecodeError("unterminated json object", text, start)
