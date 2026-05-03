@@ -389,7 +389,7 @@ th {
 }
 
 .submission-primary-cell {
-  width: 60%;
+  width: 64%;
   vertical-align: middle;
 }
 
@@ -437,8 +437,14 @@ th {
 }
 
 .submission-status-cell {
-  width: 24%;
+  width: 36%;
   vertical-align: middle;
+}
+
+.submission-status-panel {
+  display: grid;
+  gap: 8px;
+  align-content: center;
 }
 
 .submission-status-list {
@@ -453,27 +459,23 @@ th {
   font-size: 12px;
 }
 
-.submission-actions-cell {
-  width: 12%;
-  min-width: 84px;
+.submission-ops-line {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 
-.submission-actions-cell .row-actions {
-  display: grid;
-  gap: 6px;
-  justify-items: start;
+.submission-ops-line form {
+  margin: 0;
 }
 
-.submission-actions-cell .row-actions form {
+.submission-ops-line .ghost-button,
+.submission-ops-line button {
   width: auto;
 }
 
-.submission-actions-cell .row-actions .ghost-button,
-.submission-actions-cell .row-actions button {
-  width: auto;
-}
-
-.submission-actions-cell .mini-button {
+.submission-ops-line .mini-button {
   padding: 6px 10px;
   font-size: 12px;
 }

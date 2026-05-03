@@ -188,7 +188,7 @@ def test_admin_submission_list_uses_compact_single_page_layout(app, client):
 
     assert response.status_code == 200
     headers = [item.get_text(" ", strip=True) for item in soup.select("thead th")]
-    assert headers[:3] == ["提交信息", "状态", ""]
+    assert headers[:2] == ["提交信息", "状态与操作"]
     row = soup.select_one("tbody tr")
     assert row is not None
     assert "2026-05-03 08:05" in row.select_one(".submission-meta-line").get_text(" ", strip=True)
@@ -199,6 +199,8 @@ def test_admin_submission_list_uses_compact_single_page_layout(app, client):
     assert "抓题" in status_text
     assert "学生提示" in status_text
     assert "老师诊断" in status_text
+    assert "查看详情" in status_text
+    assert "删除记录" in status_text
 
 
 def test_admin_submission_list_styles_keep_full_title_and_compact_actions(client):
@@ -212,13 +214,15 @@ def test_admin_submission_list_styles_keep_full_title_and_compact_actions(client
     assert ".submission-title-line {" in css
     assert "display: block;" in css
     assert "text-overflow: ellipsis;" not in css
-    assert ".submission-actions-cell .row-actions {" in css
-    assert "justify-items: start;" in css
-    assert ".submission-actions-cell .row-actions .ghost-button," in css
+    assert ".submission-ops-line {" in css
+    assert "display: flex;" in css
+    assert ".submission-ops-line .ghost-button," in css
     assert "width: auto;" in css
-    assert ".submission-actions-cell .mini-button {" in css
+    assert ".submission-ops-line .mini-button {" in css
     assert "padding: 6px 10px;" in css
     assert "font-size: 12px;" in css
+    assert ".submission-status-panel {" in css
+    assert ".submission-ops-line {" in css
 
 
 def test_admin_submission_actions_use_unified_button_style(app, client):
