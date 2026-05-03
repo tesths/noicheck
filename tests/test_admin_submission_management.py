@@ -191,10 +191,10 @@ def test_admin_submission_list_uses_compact_single_page_layout(app, client):
     assert headers[:3] == ["提交信息", "状态", ""]
     row = soup.select_one("tbody tr")
     assert row is not None
-    assert "2026-05-03 08:05" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
-    assert "张小明（stu01）" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
-    assert "自己提交" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
-    assert "01:统计数字字符个数" in row.select_one(".submission-primary-line").get_text(" ", strip=True)
+    assert "2026-05-03 08:05" in row.select_one(".submission-meta-line").get_text(" ", strip=True)
+    assert "张小明（stu01）" in row.select_one(".submission-meta-line").get_text(" ", strip=True)
+    assert "自己提交" in row.select_one(".submission-meta-line").get_text(" ", strip=True)
+    assert "01:统计数字字符个数" in row.select_one(".submission-title-line").get_text(" ", strip=True)
     status_text = row.select_one(".submission-status-cell").get_text(" ", strip=True)
     assert "抓题" in status_text
     assert "学生提示" in status_text
@@ -208,13 +208,17 @@ def test_admin_submission_list_styles_keep_full_title_and_compact_actions(client
     assert response.status_code == 200
     assert ".submission-primary-cell {" in css
     assert "vertical-align: middle;" in css
-    assert ".submission-title {" in css
-    assert "white-space: normal;" in css
+    assert ".submission-meta-line {" in css
+    assert ".submission-title-line {" in css
+    assert "display: block;" in css
     assert "text-overflow: ellipsis;" not in css
     assert ".submission-actions-cell .row-actions {" in css
     assert "justify-items: start;" in css
     assert ".submission-actions-cell .row-actions .ghost-button," in css
     assert "width: auto;" in css
+    assert ".submission-actions-cell .mini-button {" in css
+    assert "padding: 6px 10px;" in css
+    assert "font-size: 12px;" in css
 
 
 def test_admin_submission_actions_use_unified_button_style(app, client):

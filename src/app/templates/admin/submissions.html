@@ -53,10 +53,12 @@
             <tr>
               <td class="submission-primary-cell">
                 <div class="submission-primary-line">
-                  <span class="submission-time">{{ submission.created_at|beijing_datetime }}</span>
-                  <span class="submission-student student-label">{{ submission.admin_student_label }}</span>
-                  <span class="submission-mode">{{ submission.submission_mode_label }}</span>
-                  <span class="submission-title" title="{{ submission.problem_title or submission.problem_path or submission.problem_url }}">{{ submission.problem_title or submission.problem_path or submission.problem_url }}</span>
+                  <div class="submission-meta-line">
+                    <span class="submission-time">{{ submission.created_at|beijing_datetime }}</span>
+                    <span class="submission-student student-label">{{ submission.admin_student_label }}</span>
+                    <span class="submission-mode">{{ submission.submission_mode_label }}</span>
+                  </div>
+                  <span class="submission-title-line" title="{{ submission.problem_title or submission.problem_path or submission.problem_url }}">{{ submission.problem_title or submission.problem_path or submission.problem_url }}</span>
                 </div>
               </td>
               <td class="status-cell submission-status-cell">
