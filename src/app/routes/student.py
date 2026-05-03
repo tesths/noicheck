@@ -182,7 +182,9 @@ def logout():
 def submissions():
     student = current_student()
     submissions = (
-        Submission.query.filter_by(student_user_id=student.id).order_by(Submission.created_at.desc()).all()
+        Submission.query.filter_by(student_user_id=student.id, deleted_at=None)
+        .order_by(Submission.created_at.desc())
+        .all()
     )
     return render_template("student/submissions.html", student=student, submissions=submissions)
 
@@ -216,5 +218,9 @@ def submission_new_teacher_review():
 @student_login_required
 def submission_detail(public_id: str):
     student = current_student()
-    submission = Submission.query.filter_by(public_id=public_id, student_user_id=student.id).first_or_404()
+    submission = Submission.query.filter_by(
+        public_id=public_id,
+        student_user_id=student.id,
+        deleted_at=None,
+    ).first_or_404()
     return render_template("student/submission_detail.html", student=student, submission=submission)

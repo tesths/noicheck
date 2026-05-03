@@ -7,7 +7,6 @@ from src.app.schemas import StudentHintResult
 from src.app.services.ai import (
     DeepSeekDiagnosisService,
     DiagnosisPayload,
-    DiagnosisServiceError,
     StudentHintResponse,
 )
 from src.app.services.problem_fetcher import ProblemContent

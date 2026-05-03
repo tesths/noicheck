@@ -45,6 +45,7 @@ class Submission(db.Model):
     student_hint_status = db.Column(db.String(16), nullable=False, default="pending")
     diagnosis_status = db.Column(db.String(16), nullable=False, default="pending")
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
     student_user = db.relationship("StudentUser", back_populates="submissions")
     problem_snapshot = db.relationship(
         "ProblemSnapshot",
@@ -97,3 +98,14 @@ class Submission(db.Model):
     @property
     def result_status_label(self) -> str:
         return _status_label(self.result_status)
+
+    @property
+    def admin_student_label(self) -> str:
+        if self.student_user is None:
+            return self.student_name
+        if self.student_user.real_name:
+            return f"{self.student_user.real_name}（{self.student_user.nickname}）"
+        return self.student_user.nickname
+
+    def mark_deleted(self) -> None:
+        self.deleted_at = datetime.now(timezone.utc)

@@ -162,6 +162,7 @@ def test_bootstrap_repairs_legacy_submissions_schema(tmp_path):
         assert legacy_submission.submission_mode == "teacher_review"
         assert legacy_submission.fetch_status == "pending"
         assert legacy_submission.diagnosis_status == "pending"
+        assert legacy_submission.deleted_at is None
 
         new_submission = Submission(
             student_name="新学生",

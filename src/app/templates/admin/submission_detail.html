@@ -6,7 +6,7 @@
     <div class="panel-header">
       <div>
         <p class="eyebrow">提交详情</p>
-        <h1>{{ submission.student_name }}</h1>
+        <h1>{{ submission.admin_student_label }}</h1>
       </div>
       <div class="panel-actions">
         {% if submission.diagnosis_status in ["queued", "running"] %}
@@ -19,11 +19,22 @@
             </button>
           </form>
         {% endif %}
+        <form method="post" action="{{ url_for('admin.delete_submission', public_id=submission.public_id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if submission.student_user_id %}
+            <input type="hidden" name="student_user_id" value="{{ submission.student_user_id }}">
+          {% endif %}
+          <button class="ghost-button" type="submit">删除记录</button>
+        </form>
         <a class="text-link" href="{{ url_for('admin.student_list') }}">学生管理</a>
         <a class="text-link" href="{{ url_for('admin.submission_list') }}">返回列表</a>
       </div>
     </div>
     <dl class="meta-grid">
+      <div>
+        <dt>学生</dt>
+        <dd>{{ submission.admin_student_label }}</dd>
+      </div>
       <div>
         <dt>提交方式</dt>
         <dd>{{ submission.submission_mode_label }}</dd>

@@ -102,6 +102,7 @@ def _repair_legacy_schema(app: Flask) -> None:
         "student_hint_status": "VARCHAR(16)",
         "diagnosis_status": "VARCHAR(16)",
         "created_at": timestamp_type,
+        "deleted_at": timestamp_type,
     }
 
     with db.engine.begin() as connection:
@@ -177,6 +178,9 @@ def _repair_legacy_schema(app: Flask) -> None:
         )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_submissions_student_user_id ON submissions (student_user_id)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_submissions_deleted_at ON submissions (deleted_at)")
         )
 
     _repair_legacy_diagnosis_runs_schema(app)

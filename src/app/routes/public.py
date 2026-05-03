@@ -1,16 +1,13 @@
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import Blueprint, current_app, flash, redirect, render_template, url_for
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..bootstrap import ensure_database_schema
 from ..extensions import db
 from ..models import Submission
-from ..services.auth import hash_client_ip
-from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job
-from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
 
 public_bp = Blueprint("public", __name__)
 
@@ -195,5 +192,5 @@ def submit():
 
 @public_bp.get("/submit/success/<public_id>")
 def submit_success(public_id: str):
-    submission = Submission.query.filter_by(public_id=public_id).first_or_404()
+    submission = Submission.query.filter_by(public_id=public_id, deleted_at=None).first_or_404()
     return render_template("submit_success.html", submission=submission)

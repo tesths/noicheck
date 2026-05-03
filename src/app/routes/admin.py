@@ -12,6 +12,56 @@ from ..services.settings import ALLOWED_AI_MODELS, get_active_ai_model, set_acti
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
+def _student_list_query():
+    return StudentUser.query.order_by(StudentUser.created_at.desc())
+
+
+def _submission_list_query():
+    return Submission.query.filter(Submission.deleted_at.is_(None)).order_by(Submission.created_at.desc())
+
+
+def _selected_student_id() -> int | None:
+    raw_value = request.args.get("student_user_id", "").strip()
+    if not raw_value:
+        return None
+    try:
+        return int(raw_value)
+    except ValueError:
+        return None
+
+
+def _render_submission_list(*, student: StudentUser | None = None):
+    selected_student_id = student.id if student else _selected_student_id()
+    query = _submission_list_query()
+    if selected_student_id is not None:
+        query = query.filter_by(student_user_id=selected_student_id)
+    submissions = query.all()
+    return render_template(
+        "admin/submissions.html",
+        submissions=submissions,
+        active_ai_model=get_active_ai_model(),
+        allowed_ai_models=ALLOWED_AI_MODELS,
+        students=_student_list_query().all(),
+        selected_student_user_id=selected_student_id,
+        student_page=student,
+    )
+
+
+def _submission_detail_query(public_id: str):
+    return Submission.query.filter_by(public_id=public_id, deleted_at=None)
+
+
+def _delete_redirect_response():
+    student_id = request.form.get("student_id", "").strip()
+    if student_id:
+        return redirect(url_for("admin.student_submission_list", student_id=int(student_id)))
+
+    selected_student_id = request.form.get("student_user_id", "").strip()
+    if selected_student_id:
+        return redirect(url_for("admin.submission_list", student_user_id=int(selected_student_id)))
+    return redirect(url_for("admin.submission_list"))
+
+
 @admin_bp.route("/login", methods=["GET", "POST"])
 def login():
     if current_user.is_authenticated:
@@ -43,26 +93,27 @@ def logout():
 @admin_bp.get("/submissions")
 @login_required
 def submission_list():
-    submissions = Submission.query.order_by(Submission.created_at.desc()).all()
-    return render_template(
-        "admin/submissions.html",
-        submissions=submissions,
-        active_ai_model=get_active_ai_model(),
-        allowed_ai_models=ALLOWED_AI_MODELS,
-    )
+    return _render_submission_list()
+
+
+@admin_bp.get("/students/<int:student_id>/submissions")
+@login_required
+def student_submission_list(student_id: int):
+    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    return _render_submission_list(student=student)
 
 
 @admin_bp.get("/submissions/<public_id>")
 @login_required
 def submission_detail(public_id: str):
-    submission = Submission.query.filter_by(public_id=public_id).first_or_404()
+    submission = _submission_detail_query(public_id).first_or_404()
     return render_template("admin/submission_detail.html", submission=submission)
 
 
 @admin_bp.post("/submissions/<public_id>/diagnose")
 @login_required
 def generate_diagnosis(public_id: str):
-    submission = Submission.query.filter_by(public_id=public_id).first_or_404()
+    submission = _submission_detail_query(public_id).first_or_404()
     try:
         enqueue_diagnosis_job(submission, requested_by="admin")
         flash("后台任务已入队，请刷新详情查看结果。", "success")
@@ -74,6 +125,21 @@ def generate_diagnosis(public_id: str):
         flash("提交后台任务失败，请稍后再试。", "error")
 
     return redirect(url_for("admin.submission_detail", public_id=public_id))
+
+
+@admin_bp.post("/submissions/<public_id>/delete")
+@login_required
+def delete_submission(public_id: str):
+    submission = _submission_detail_query(public_id).first_or_404()
+    submission.mark_deleted()
+    try:
+        db.session.commit()
+        flash("提交记录已删除。", "success")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("删除提交记录失败，请稍后再试。", "error")
+        return redirect(url_for("admin.submission_detail", public_id=public_id))
+    return _delete_redirect_response()
 
 
 @admin_bp.post("/settings/ai-model")
@@ -96,7 +162,7 @@ def update_ai_model():
 @admin_bp.get("/students")
 @login_required
 def student_list():
-    students = StudentUser.query.order_by(StudentUser.created_at.desc()).all()
+    students = _student_list_query().all()
     return render_template("admin/students.html", students=students)
 
 
@@ -108,7 +174,7 @@ def create_student():
     password = request.form.get("password", "")
     if not nickname or not real_name or not password:
         flash("请填写学生用户名、真实姓名和密码。", "error")
-        students = StudentUser.query.order_by(StudentUser.created_at.desc()).all()
+        students = _student_list_query().all()
         return render_template(
             "admin/students.html",
             students=students,
@@ -123,7 +189,7 @@ def create_student():
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存学生信息失败，请稍后再试。", "error")
-        students = StudentUser.query.order_by(StudentUser.created_at.desc()).all()
+        students = _student_list_query().all()
         return render_template(
             "admin/students.html",
             students=students,

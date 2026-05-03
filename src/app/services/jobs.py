@@ -376,7 +376,7 @@ def _sync_problem_snapshot(submission: Submission) -> str:
 
 
 def _get_submission(public_id: str) -> Submission | None:
-    return Submission.query.filter_by(public_id=public_id).first()
+    return Submission.query.filter_by(public_id=public_id, deleted_at=None).first()
 
 
 def _fetch_failure_message(submission: Submission) -> str:
