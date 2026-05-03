@@ -201,6 +201,22 @@ def test_admin_submission_list_uses_compact_single_page_layout(app, client):
     assert "老师诊断" in status_text
 
 
+def test_admin_submission_list_styles_keep_full_title_and_compact_actions(client):
+    response = client.get("/styles.css")
+    css = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert ".submission-primary-cell {" in css
+    assert "vertical-align: middle;" in css
+    assert ".submission-title {" in css
+    assert "white-space: normal;" in css
+    assert "text-overflow: ellipsis;" not in css
+    assert ".submission-actions-cell .row-actions {" in css
+    assert "justify-items: start;" in css
+    assert ".submission-actions-cell .row-actions .ghost-button," in css
+    assert "width: auto;" in css
+
+
 def test_admin_submission_actions_use_unified_button_style(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))

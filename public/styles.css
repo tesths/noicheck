@@ -390,6 +390,7 @@ th {
 
 .submission-primary-cell {
   width: 60%;
+  vertical-align: middle;
 }
 
 .submission-primary-line {
@@ -397,7 +398,6 @@ th {
   align-items: center;
   gap: 0;
   min-width: 0;
-  white-space: nowrap;
 }
 
 .submission-primary-line > span {
@@ -414,22 +414,26 @@ th {
 .submission-student,
 .submission-mode {
   flex: none;
+  white-space: nowrap;
 }
 
 .submission-title {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.45;
 }
 
 .submission-status-cell {
   width: 24%;
+  vertical-align: middle;
 }
 
 .submission-status-list {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
 }
 
 .submission-status-list .status {
@@ -438,23 +442,28 @@ th {
 }
 
 .submission-actions-cell {
-  width: 16%;
-  min-width: 112px;
+  width: 12%;
+  min-width: 84px;
 }
 
 .submission-actions-cell .row-actions {
   display: grid;
   gap: 6px;
-  justify-items: stretch;
+  justify-items: start;
 }
 
 .submission-actions-cell .row-actions form {
-  width: 100%;
+  width: auto;
 }
 
 .submission-actions-cell .row-actions .ghost-button,
 .submission-actions-cell .row-actions button {
-  width: 100%;
+  width: auto;
+}
+
+.submission-actions-cell .mini-button {
+  padding: 8px 12px;
+  font-size: 13px;
 }
 
 .student-name-cell {
