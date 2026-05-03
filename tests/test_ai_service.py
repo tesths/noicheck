@@ -66,7 +66,6 @@ def test_deepseek_service_uses_simple_chat_completion():
 
     call = client.chat.completions.calls[0]
     assert call["model"] == "deepseek-v4-pro"
-    assert call["max_tokens"] == 1800
     assert "reasoning_effort" not in call
     assert "extra_body" not in call
     assert "题目描述" in call["messages"][1]["content"]
@@ -74,66 +73,6 @@ def test_deepseek_service_uses_simple_chat_completion():
     assert "完整正确的 C++ 参考程序" in call["messages"][1]["content"]
     assert "简体中文" in call["messages"][1]["content"]
     assert result.result.possible_issues[0].title == "条件判断遗漏"
-
-
-def test_openrouter_request_prefers_throughput_sorted_providers():
-    client = FakeClient()
-    service = DeepSeekDiagnosisService(
-        api_key="test-key",
-        base_url="https://openrouter.ai/api/v1",
-        model_name="deepseek/deepseek-v4-pro",
-        client=client,
-    )
-
-    service.diagnose(
-        DiagnosisPayload(
-            student_name="小明",
-            problem_url="https://noi.openjudge.cn/ch0107/01/",
-            problem_title="01:统计数字字符个数",
-            description_text="输入一行字符，统计其中数字字符的个数。",
-            input_text="一行字符串。",
-            output_text="输出数字字符个数。",
-            sample_input_text="abc123",
-            sample_output_text="3",
-            code_text="int main() { return 0; }",
-        )
-    )
-
-    call = client.chat.completions.calls[0]
-    assert call["max_tokens"] == 1800
-    assert call["extra_body"] == {
-        "provider": {
-            "sort": "throughput",
-            "require_parameters": True,
-        }
-    }
-
-
-def test_student_hint_uses_smaller_max_tokens_budget():
-    client = FakeClient()
-    service = DeepSeekDiagnosisService(
-        api_key="test-key",
-        base_url="https://openrouter.ai/api/v1",
-        model_name="deepseek/deepseek-v4-pro",
-        client=client,
-    )
-
-    service.diagnose_student(
-        DiagnosisPayload(
-            student_name="小明",
-            problem_url="https://noi.openjudge.cn/ch0107/01/",
-            problem_title="01:统计数字字符个数",
-            description_text="输入一行字符，统计其中数字字符的个数。",
-            input_text="一行字符串。",
-            output_text="输出数字字符个数。",
-            sample_input_text="abc123",
-            sample_output_text="3",
-            code_text="int main() { return 0; }",
-        )
-    )
-
-    call = client.chat.completions.calls[0]
-    assert call["max_tokens"] == 900
 
 
 def test_deepseek_service_accepts_loose_chinese_json_shape():

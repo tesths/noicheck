@@ -11,9 +11,6 @@ def _reload_config_module(monkeypatch, **env):
         "AI_API_KEY",
         "AI_BASE_URL",
         "AI_MODEL",
-        "AI_MAX_TOKENS_TEACHER",
-        "AI_MAX_TOKENS_STUDENT",
-        "OPENROUTER_PROVIDER_SORT",
         "DEEPSEEK_API_KEY",
         "DEEPSEEK_BASE_URL",
         "DEEPSEEK_MODEL",
@@ -40,9 +37,6 @@ def test_config_prefers_ai_env_and_keeps_legacy_aliases(monkeypatch):
         AI_API_KEY="ai-key",
         AI_BASE_URL="https://api.example.com/v1",
         AI_MODEL="ai-model",
-        AI_MAX_TOKENS_TEACHER="2100",
-        AI_MAX_TOKENS_STUDENT="700",
-        OPENROUTER_PROVIDER_SORT="throughput",
         DEEPSEEK_API_KEY="legacy-key",
         DEEPSEEK_BASE_URL="https://legacy.example.com",
         DEEPSEEK_MODEL="legacy-model",
@@ -51,9 +45,6 @@ def test_config_prefers_ai_env_and_keeps_legacy_aliases(monkeypatch):
     assert config_module.Config.AI_API_KEY == "ai-key"
     assert config_module.Config.AI_BASE_URL == "https://api.example.com/v1"
     assert config_module.Config.AI_MODEL == "ai-model"
-    assert config_module.Config.AI_MAX_TOKENS_TEACHER == 2100
-    assert config_module.Config.AI_MAX_TOKENS_STUDENT == 700
-    assert config_module.Config.OPENROUTER_PROVIDER_SORT == "throughput"
     assert config_module.Config.DEEPSEEK_API_KEY == "ai-key"
     assert config_module.Config.DEEPSEEK_BASE_URL == "https://api.example.com/v1"
     assert config_module.Config.DEEPSEEK_MODEL == "ai-model"

@@ -171,9 +171,6 @@ def process_diagnosis_job(submission_public_id: str, *, fetch_before_diagnosis: 
         api_key=ai_config["api_key"],
         base_url=ai_config["base_url"],
         model_name=ai_config["model_name"],
-        teacher_max_tokens=_teacher_max_tokens(),
-        student_max_tokens=_student_max_tokens(),
-        openrouter_provider_sort=_openrouter_provider_sort(),
     )
 
     snapshot = submission.problem_snapshot
@@ -281,9 +278,6 @@ def process_student_hint_job(submission_public_id: str, *, fetch_before_diagnosi
         api_key=ai_config["api_key"],
         base_url=ai_config["base_url"],
         model_name=ai_config["model_name"],
-        teacher_max_tokens=_teacher_max_tokens(),
-        student_max_tokens=_student_max_tokens(),
-        openrouter_provider_sort=_openrouter_provider_sort(),
     )
 
     snapshot = submission.problem_snapshot
@@ -428,15 +422,3 @@ def _ai_model_name() -> str:
         or current_app.config.get("DEEPSEEK_MODEL")
         or "deepseek-v4-pro"
     ).strip()
-
-
-def _teacher_max_tokens() -> int:
-    return int(current_app.config.get("AI_MAX_TOKENS_TEACHER", 1800))
-
-
-def _student_max_tokens() -> int:
-    return int(current_app.config.get("AI_MAX_TOKENS_STUDENT", 900))
-
-
-def _openrouter_provider_sort() -> str:
-    return str(current_app.config.get("OPENROUTER_PROVIDER_SORT", "throughput")).strip()
