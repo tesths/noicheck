@@ -26,6 +26,7 @@
           {% if current_user.is_authenticated %}
             <a href="{{ url_for('admin.submission_list') }}">教师后台</a>
             <a href="{{ url_for('admin.student_list') }}">学生管理</a>
+            <a href="{{ url_for('admin.settings_page') }}">系统设置</a>
           {% else %}
             <a href="{{ url_for('admin.login') }}">教师后台</a>
           {% endif %}

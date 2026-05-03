@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}系统设置 | NOI 错题诊断{% endblock %}
+{% block content %}
+<section class="panel">
+  <div class="panel-header">
+    <div>
+      <p class="eyebrow">教师后台</p>
+      <h1>系统设置</h1>
+    </div>
+    <div class="panel-actions">
+      <a class="ghost-button mini-button" href="{{ url_for('admin.submission_list') }}">提交列表</a>
+      <a class="ghost-button mini-button" href="{{ url_for('admin.student_list') }}">学生管理</a>
+      <form method="post" action="{{ url_for('admin.logout') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="ghost-button mini-button" type="submit">退出</button>
+      </form>
+    </div>
+  </div>
+
+  <form class="form-panel" method="post" action="{{ url_for('admin.update_ai_model') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="hero-copy compact-copy">
+      <p class="eyebrow">AI 模型</p>
+      <p>当前：<strong>{{ active_ai_model }}</strong></p>
+    </div>
+    <label class="field">
+      <span>选择模型</span>
+      <select name="model_name">
+        {% for model_name in allowed_ai_models %}
+          <option value="{{ model_name }}" {% if model_name == active_ai_model %}selected{% endif %}>{{ model_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <button class="primary-button" type="submit">保存设置</button>
+  </form>
+</section>
+{% endblock %}

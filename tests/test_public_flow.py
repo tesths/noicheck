@@ -74,6 +74,13 @@ def test_stylesheet_is_served(client):
     assert b":root" in response.data
 
 
+def test_stylesheet_does_not_use_underlines_for_buttons_or_links(client):
+    response = client.get("/styles.css")
+
+    assert response.status_code == 200
+    assert b"text-decoration: underline;" not in response.data
+
+
 def test_home_page_references_stylesheet(client):
     response = client.get("/")
 

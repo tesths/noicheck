@@ -11,6 +11,7 @@ from .routes.public import public_bp
 from .routes.student import student_bp
 from .services.auth import register_auth_commands
 from .services.auth import current_student
+from .services.timezone import format_beijing_time
 
 
 def create_app(config_object: type[Config] | None = None) -> Flask:
@@ -33,6 +34,10 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
     @app.context_processor
     def _inject_student_context() -> dict[str, object]:
         return {"current_student": current_student}
+
+    @app.template_filter("beijing_datetime")
+    def _format_beijing_datetime(value):
+        return format_beijing_time(value)
 
     with app.app_context():
         bootstrap_app(app)

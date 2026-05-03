@@ -7,6 +7,7 @@ from ..models import StudentUser, Submission
 from ..services.auth import authenticate_admin, ensure_student_user, hash_password, login_admin
 from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job
+from ..services.pagination import paginate_query, normalize_page
 from ..services.settings import ALLOWED_AI_MODELS, get_active_ai_model, set_active_ai_model
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -30,20 +31,33 @@ def _selected_student_id() -> int | None:
         return None
 
 
+def _page_url(page: int | None) -> str | None:
+    if page is None:
+        return None
+
+    params = request.args.to_dict(flat=True)
+    if page <= 1:
+        params.pop("page", None)
+    else:
+        params["page"] = str(page)
+    return url_for(request.endpoint, **(request.view_args or {}), **params)
+
+
 def _render_submission_list(*, student: StudentUser | None = None):
     selected_student_id = student.id if student else _selected_student_id()
     query = _submission_list_query()
     if selected_student_id is not None:
         query = query.filter_by(student_user_id=selected_student_id)
-    submissions = query.all()
+    pagination = paginate_query(query, page=normalize_page(request.args.get("page")))
     return render_template(
         "admin/submissions.html",
-        submissions=submissions,
-        active_ai_model=get_active_ai_model(),
-        allowed_ai_models=ALLOWED_AI_MODELS,
+        submissions=pagination.items,
         students=_student_list_query().all(),
         selected_student_user_id=selected_student_id,
         student_page=student,
+        pagination=pagination,
+        prev_page_url=_page_url(pagination.prev_page),
+        next_page_url=_page_url(pagination.next_page),
     )
 
 
@@ -110,6 +124,16 @@ def submission_detail(public_id: str):
     return render_template("admin/submission_detail.html", submission=submission)
 
 
+@admin_bp.get("/settings")
+@login_required
+def settings_page():
+    return render_template(
+        "admin/settings.html",
+        active_ai_model=get_active_ai_model(),
+        allowed_ai_models=ALLOWED_AI_MODELS,
+    )
+
+
 @admin_bp.post("/submissions/<public_id>/diagnose")
 @login_required
 def generate_diagnosis(public_id: str):
@@ -156,7 +180,7 @@ def update_ai_model():
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存模型设置失败，请稍后再试。", "error")
-    return redirect(url_for("admin.submission_list"))
+    return redirect(url_for("admin.settings_page"))
 
 
 @admin_bp.get("/students")
@@ -198,6 +222,25 @@ def create_student():
         ), 500
 
     flash(f"学生 {real_name}（{nickname}）已保存。", "success")
+    return redirect(url_for("admin.student_list"))
+
+
+@admin_bp.post("/students/<int:student_id>/profile")
+@login_required
+def update_student_profile(student_id: int):
+    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    real_name = request.form.get("real_name", "").strip()
+    if not real_name:
+        flash("请填写真实姓名。", "error")
+        return redirect(url_for("admin.student_list"))
+
+    student.real_name = real_name
+    try:
+        db.session.commit()
+        flash(f"学生 {student.nickname} 的真实姓名已更新。", "success")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("更新真实姓名失败，请稍后再试。", "error")
     return redirect(url_for("admin.student_list"))
 
 

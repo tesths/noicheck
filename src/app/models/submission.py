@@ -103,9 +103,7 @@ class Submission(db.Model):
     def admin_student_label(self) -> str:
         if self.student_user is None:
             return self.student_name
-        if self.student_user.real_name:
-            return f"{self.student_user.real_name}（{self.student_user.nickname}）"
-        return self.student_user.nickname
+        return self.student_user.display_name
 
     def mark_deleted(self) -> None:
         self.deleted_at = datetime.now(timezone.utc)

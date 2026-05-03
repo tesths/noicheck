@@ -17,6 +17,12 @@ class StudentUser(db.Model):
     submissions = db.relationship("Submission", back_populates="student_user")
 
     @property
+    def display_name(self) -> str:
+        if self.real_name:
+            return f"{self.real_name}（{self.nickname}）"
+        return self.nickname
+
+    @property
     def active_submission_count(self) -> int:
         return sum(1 for submission in self.submissions if submission.deleted_at is None)
 

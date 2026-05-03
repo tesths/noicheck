@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from bs4 import BeautifulSoup
 
 from src.app.extensions import db
@@ -94,6 +96,75 @@ def test_admin_can_create_reset_and_disable_student(app, client):
         follow_redirects=False,
     )
     assert disabled_login.status_code == 401
+
+
+def test_admin_can_update_student_real_name(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.commit()
+        student_id = student.id
+
+    _login_admin(client)
+    update_response = client.post(
+        f"/admin/students/{student_id}/profile",
+        data={"real_name": "张老师"},
+        follow_redirects=False,
+    )
+
+    assert update_response.status_code == 302
+
+    with app.app_context():
+        student = StudentUser.query.filter_by(id=student_id).one()
+        assert student.real_name == "张老师"
+
+
+def test_student_management_actions_use_unified_button_style(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/students")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    detail_link = next(link for link in soup.select("a") if link.get_text(strip=True) == "查看提交")
+    assert "ghost-button" in detail_link.get("class", [])
+    assert "mini-button" in detail_link.get("class", [])
+
+
+def test_student_submission_list_is_paginated_by_20(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="小明", real_name="张小明", password_hash=hash_password("pass-123"))
+        db.session.add(student)
+        db.session.flush()
+        submissions = [
+            Submission(
+                student_name="小明",
+                student_user=student,
+                problem_url=f"http://noi.openjudge.cn/ch0107/{index:02d}/",
+                code_text=f"int main() {{ return {index}; }}",
+                created_at=datetime(2026, 5, 3, 0, index % 60, tzinfo=timezone.utc),
+            )
+            for index in range(21)
+        ]
+        db.session.add_all(submissions)
+        db.session.commit()
+
+    _login_student(client, "小明", "pass-123")
+    first_page = client.get("/student/submissions")
+    second_page = client.get("/student/submissions?page=2")
+
+    assert first_page.status_code == 200
+    assert first_page.data.count("查看详情".encode()) == 20
+    assert b"page=2" in first_page.data
+
+    assert second_page.status_code == 200
+    assert second_page.data.count("查看详情".encode()) == 1
 
 
 def test_student_new_page_shows_two_flow_options(app, client):

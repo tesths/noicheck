@@ -38,7 +38,7 @@
       </div>
       <div>
         <dt>提交时间</dt>
-        <dd>{{ submission.created_at.strftime("%Y-%m-%d %H:%M") }}</dd>
+        <dd>{{ submission.created_at|beijing_datetime }}</dd>
       </div>
     </dl>
   </article>

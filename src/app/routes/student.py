@@ -13,9 +13,22 @@ from ..services.auth import (
 )
 from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job, enqueue_student_hint_job
+from ..services.pagination import normalize_page, paginate_query
 from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
 
 student_bp = Blueprint("student", __name__, url_prefix="/student")
+
+
+def _page_url(page: int | None) -> str | None:
+    if page is None:
+        return None
+
+    params = request.args.to_dict(flat=True)
+    if page <= 1:
+        params.pop("page", None)
+    else:
+        params["page"] = str(page)
+    return url_for(request.endpoint, **(request.view_args or {}), **params)
 
 
 def _validate_submission_form(problem_url: str, code_text: str) -> list[str]:
@@ -181,12 +194,19 @@ def logout():
 @student_login_required
 def submissions():
     student = current_student()
-    submissions = (
+    pagination = paginate_query(
         Submission.query.filter_by(student_user_id=student.id, deleted_at=None)
-        .order_by(Submission.created_at.desc())
-        .all()
+        .order_by(Submission.created_at.desc()),
+        page=normalize_page(request.args.get("page")),
     )
-    return render_template("student/submissions.html", student=student, submissions=submissions)
+    return render_template(
+        "student/submissions.html",
+        student=student,
+        submissions=pagination.items,
+        pagination=pagination,
+        prev_page_url=_page_url(pagination.prev_page),
+        next_page_url=_page_url(pagination.next_page),
+    )
 
 
 @student_bp.get("/submissions/new")

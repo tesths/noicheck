@@ -24,10 +24,11 @@
           {% if submission.student_user_id %}
             <input type="hidden" name="student_user_id" value="{{ submission.student_user_id }}">
           {% endif %}
-          <button class="ghost-button" type="submit">删除记录</button>
+          <button class="ghost-button mini-button" type="submit">删除记录</button>
         </form>
-        <a class="text-link" href="{{ url_for('admin.student_list') }}">学生管理</a>
-        <a class="text-link" href="{{ url_for('admin.submission_list') }}">返回列表</a>
+        <a class="ghost-button mini-button" href="{{ url_for('admin.student_list') }}">学生管理</a>
+        <a class="ghost-button mini-button" href="{{ url_for('admin.settings_page') }}">系统设置</a>
+        <a class="ghost-button mini-button" href="{{ url_for('admin.submission_list') }}">返回列表</a>
       </div>
     </div>
     <dl class="meta-grid">

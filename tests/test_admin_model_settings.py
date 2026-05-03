@@ -34,7 +34,7 @@ def _problem_content() -> ProblemContent:
     )
 
 
-def test_admin_submission_list_shows_ai_model_switcher(app, client):
+def test_admin_system_settings_page_shows_ai_model_switcher(app, client):
     with app.app_context():
         app.config["AI_MODEL"] = "deepseek-v4-pro"
         app.config["DEEPSEEK_MODEL"] = "deepseek-v4-pro"
@@ -43,9 +43,10 @@ def test_admin_submission_list_shows_ai_model_switcher(app, client):
         db.session.commit()
 
     _login_admin(client)
-    response = client.get("/admin/submissions")
+    response = client.get("/admin/settings")
 
     assert response.status_code == 200
+    assert "系统设置".encode() in response.data
     assert "deepseek-v4-pro".encode() in response.data
     assert "deepseek-v4-flash".encode() in response.data
 

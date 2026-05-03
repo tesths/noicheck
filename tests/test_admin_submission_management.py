@@ -1,3 +1,7 @@
+from datetime import datetime, timezone
+
+from bs4 import BeautifulSoup
+
 from src.app.extensions import db
 from src.app.models import AdminUser, Submission, StudentUser
 from src.app.services.auth import hash_password
@@ -79,9 +83,87 @@ def test_admin_can_view_a_single_students_submission_history(app, client):
     response = client.get(f"/admin/students/{student_id}/submissions")
 
     assert response.status_code == 200
-    assert "张小明".encode() in response.data
+    assert "张小明（stu01）".encode() in response.data
     assert "stu01".encode() in response.data
     assert response.data.count("查看详情".encode()) == 2
+
+
+def test_admin_submission_list_is_paginated_by_20(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.flush()
+
+        submissions = [
+            Submission(
+                student_name="stu01",
+                student_user=student,
+                problem_url=f"http://noi.openjudge.cn/ch0107/{index:02d}/",
+                code_text=f"int main() {{ return {index}; }}",
+                created_at=datetime(2026, 5, 3, 0, index % 60, tzinfo=timezone.utc),
+            )
+            for index in range(21)
+        ]
+        db.session.add_all(submissions)
+        db.session.commit()
+        student_id = student.id
+
+    _login_admin(client)
+    first_page = client.get(f"/admin/students/{student_id}/submissions")
+    second_page = client.get(f"/admin/students/{student_id}/submissions?page=2")
+
+    assert first_page.status_code == 200
+    assert "张小明（stu01）".encode() in first_page.data
+    assert first_page.data.count("查看详情".encode()) == 20
+    assert b"page=2" in first_page.data
+
+    assert second_page.status_code == 200
+    assert second_page.data.count("查看详情".encode()) == 1
+
+
+def test_admin_submission_list_renders_beijing_time(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            created_at=datetime(2026, 5, 3, 0, 5, tzinfo=timezone.utc),
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/submissions")
+
+    assert response.status_code == 200
+    assert "2026-05-03 08:05".encode() in response.data
+
+
+def test_admin_submission_actions_use_unified_button_style(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/submissions")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    detail_link = next(link for link in soup.select("a") if link.get_text(strip=True) == "查看详情")
+    assert "ghost-button" in detail_link.get("class", [])
+    assert "mini-button" in detail_link.get("class", [])
 
 
 def test_admin_can_soft_delete_submission_and_hide_it_from_lists(app, client):
