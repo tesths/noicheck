@@ -32,6 +32,16 @@ def test_home_page_shows_login_hub(client):
     assert "必须登录后使用".encode() in response.data
 
 
+def test_home_page_uses_showcase_layout(client):
+    response = client.get("/")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    assert soup.select_one(".showcase-stage") is not None
+    assert soup.select_one(".showcase-metrics") is not None
+    assert soup.select_one(".showcase-actions") is not None
+
+
 def test_submit_page_redirects_to_login_hub(client):
     response = client.get("/submit", follow_redirects=False)
 
@@ -108,6 +118,31 @@ def test_admin_can_login_and_view_submission(app, client):
     detail_response = client.get(f"/admin/submissions/{public_id}")
     assert detail_response.status_code == 200
     assert "统计数字字符个数".encode() in detail_response.data
+
+
+def test_admin_submission_list_uses_dashboard_layout(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        submission = Submission(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            problem_title="01:统计数字字符个数",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="failed",
+        )
+        db.session.add_all([admin, submission])
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/submissions")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    assert soup.select_one(".workspace-banner") is not None
+    assert soup.select_one(".toolbar-grid") is not None
+    assert soup.select_one(".data-panel") is not None
 
 
 def test_admin_can_queue_diagnosis_when_fetch_succeeded(app, client):

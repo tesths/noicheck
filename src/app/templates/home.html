@@ -1,23 +1,60 @@
 {% extends "base.html" %}
 {% block title %}登录入口 | NOI 错题诊断{% endblock %}
+{% block body_class %}page-home{% endblock %}
 {% block content %}
-<section class="hero-card">
+<section class="hero-card showcase-stage">
   <div class="hero-copy">
     <p class="eyebrow">统一入口</p>
     <h1>必须登录后使用</h1>
-    <p>学生登录后可以选择“自己提交”或“提交给老师”；老师登录后可以查看学生程序、AI 提示和老师版完整诊断。</p>
-  </div>
-  <div class="panel form-panel">
-    <div class="panel-header">
-      <div>
-        <p class="eyebrow">选择身份</p>
-        <h2>进入对应工作区</h2>
-      </div>
-    </div>
-    <div class="panel-actions">
+    <p class="lead">学生登录后可以选择“自己提交”或“提交给老师”；老师登录后可以查看学生程序、AI 提示和老师版完整诊断。</p>
+    <div class="showcase-actions">
       <a class="primary-button" href="{{ url_for('student.login') }}">学生登录</a>
       <a class="ghost-button" href="{{ url_for('admin.login') }}">教师登录</a>
     </div>
+    <dl class="showcase-metrics">
+      <div>
+        <dt>双通道</dt>
+        <dd>学生可先自己排查，也可直接提交给老师。</dd>
+      </div>
+      <div>
+        <dt>分层 AI</dt>
+        <dd>学生端拿到引导提示，老师端查看完整诊断。</dd>
+      </div>
+      <div>
+        <dt>统一后台</dt>
+        <dd>提交、抓题、提示和诊断都在同一套工作区里。</dd>
+      </div>
+    </dl>
+  </div>
+  <div class="showcase-aside">
+    <article class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">选择身份</p>
+          <h2>进入对应工作区</h2>
+        </div>
+      </div>
+      <div class="showcase-card-list">
+        <a class="identity-card" href="{{ url_for('student.login') }}">
+          <span class="identity-card-label">学生入口</span>
+          <strong>登录后开始自查或提交给老师</strong>
+          <span>适合日常刷题、自查与课后跟踪。</span>
+        </a>
+        <a class="identity-card identity-card-alt" href="{{ url_for('admin.login') }}">
+          <span class="identity-card-label">教师入口</span>
+          <strong>统一查看学生提交与完整诊断</strong>
+          <span>适合课堂讲评、个别辅导和后台管理。</span>
+        </a>
+      </div>
+    </article>
+    <article class="panel">
+      <p class="eyebrow">工作流</p>
+      <ul class="timeline-list">
+        <li><strong>学生端：</strong>登录后选择“自己提交”或“提交给老师”。</li>
+        <li><strong>系统：</strong>自动抓题、排队并生成对应 AI 结果。</li>
+        <li><strong>教师端：</strong>按学生、状态和任务进度统一查看与处理。</li>
+      </ul>
+    </article>
   </div>
 </section>
 {% endblock %}

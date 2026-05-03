@@ -5,9 +5,14 @@
   <div class="hero-copy">
     <p class="eyebrow">{{ mode_copy.eyebrow }}</p>
     <h1>{{ mode_copy.title }}</h1>
-    <p>{{ mode_copy.description }}</p>
+    <p class="lead">{{ mode_copy.description }}</p>
+    <ul class="feature-list">
+      <li>题目链接建议直接使用可访问的 OpenJudge 页面地址。</li>
+      <li>代码区支持完整粘贴，保留格式后更便于定位问题。</li>
+      <li>提交后可在“我的提交”里持续查看处理进度。</li>
+    </ul>
   </div>
-  <form class="panel form-panel" method="post">
+  <form class="panel form-panel editor-form-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label class="field">
       <span>当前学生</span>

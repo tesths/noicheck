@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}教师登录 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="auth-shell">
+<section class="auth-shell auth-shell-split">
+  <article class="panel auth-copy">
+    <p class="eyebrow">教师后台</p>
+    <h1>登录后统一查看</h1>
+    <p>教师工作区集中展示学生提交、抓题进度、学生提示、老师诊断与账号管理能力。</p>
+    <ul class="timeline-list">
+      <li><strong>提交列表：</strong>按学生和任务状态快速筛选。</li>
+      <li><strong>学生管理：</strong>创建账号、重置密码、启停学生。</li>
+      <li><strong>模型切换：</strong>后续学生提示和老师诊断共用当前模型。</li>
+    </ul>
+  </article>
   <form class="panel auth-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="eyebrow">教师后台</p>
@@ -18,4 +28,3 @@
   </form>
 </section>
 {% endblock %}
-

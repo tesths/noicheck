@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}学生登录 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="auth-shell">
+<section class="auth-shell auth-shell-split">
+  <article class="panel auth-copy">
+    <p class="eyebrow">学生端</p>
+    <h1>登录后开始排查</h1>
+    <p>进入学生工作区后，可以先自己拿 AI 提示排查，也可以把提交直接交给老师查看。</p>
+    <ul class="timeline-list">
+      <li><strong>自己提交：</strong>获得引导式提示，不直接给答案。</li>
+      <li><strong>提交给老师：</strong>老师端可看到完整诊断与参考程序。</li>
+      <li><strong>我的提交：</strong>统一追踪抓题、提示与诊断状态。</li>
+    </ul>
+  </article>
   <form class="panel auth-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="eyebrow">学生端</p>
