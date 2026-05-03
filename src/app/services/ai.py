@@ -98,7 +98,7 @@ class DeepSeekDiagnosisService:
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         raw_content = response.choices[0].message.content or ""
         try:
-            parsed = json.loads(raw_content)
+            parsed = _parse_json_response(raw_content)
         except json.JSONDecodeError as exc:
             raise DiagnosisServiceError("模型返回的内容不是合法 JSON。") from exc
 
@@ -352,6 +352,55 @@ def _normalize_confidence(value: Any) -> str:
     if text in {"low", "medium", "high"}:
         return text
     return "medium"
+
+
+def _parse_json_response(raw_content: str) -> Any:
+    stripped = raw_content.strip()
+    if not stripped:
+        raise json.JSONDecodeError("empty content", raw_content, 0)
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    candidate = _extract_first_json_object(stripped)
+    return json.loads(candidate)
+
+
+def _extract_first_json_object(text: str) -> str:
+    start = text.find("{")
+    if start == -1:
+        raise json.JSONDecodeError("no json object found", text, 0)
+
+    depth = 0
+    in_string = False
+    escaped = False
+
+    for index in range(start, len(text)):
+        char = text[index]
+
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+
+        if char == '"':
+            in_string = True
+            continue
+        if char == "{":
+            depth += 1
+            continue
+        if char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+
+    raise json.JSONDecodeError("unterminated json object", text, start)
 
 
 @lru_cache(maxsize=8)
