@@ -1,13 +1,16 @@
 import hashlib
 from datetime import datetime, timezone
+from functools import wraps
 
 import click
-from flask import Flask
+from flask import Flask, flash, g, redirect, session, url_for
 from flask_login import login_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db, login_manager
-from ..models import AdminUser
+from ..models import AdminUser, StudentUser
+
+STUDENT_SESSION_KEY = "student_user_id"
 
 
 @login_manager.user_loader
@@ -38,6 +41,55 @@ def login_admin(admin: AdminUser, remember: bool = False) -> None:
     login_user(admin, remember=remember)
 
 
+def authenticate_student(nickname: str, password: str) -> StudentUser | None:
+    student = StudentUser.query.filter_by(nickname=nickname, is_active=True).first()
+    if not student or not verify_password(student.password_hash, password):
+        return None
+    student.last_login_at = datetime.now(timezone.utc)
+    return student
+
+
+def login_student(student: StudentUser) -> None:
+    session[STUDENT_SESSION_KEY] = student.id
+    g.current_student = student
+
+
+def logout_student() -> None:
+    session.pop(STUDENT_SESSION_KEY, None)
+    g.current_student = None
+
+
+def current_student() -> StudentUser | None:
+    cached = getattr(g, "current_student", None)
+    if cached is not None:
+        return cached
+
+    student_id = session.get(STUDENT_SESSION_KEY)
+    if not student_id:
+        g.current_student = None
+        return None
+
+    student = db.session.get(StudentUser, int(student_id))
+    if student is None or not student.is_active:
+        session.pop(STUDENT_SESSION_KEY, None)
+        g.current_student = None
+        return None
+
+    g.current_student = student
+    return student
+
+
+def student_login_required(view):
+    @wraps(view)
+    def wrapped_view(*args, **kwargs):
+        if current_student() is None:
+            flash("请先登录学生账号。", "error")
+            return redirect(url_for("student.login"))
+        return view(*args, **kwargs)
+
+    return wrapped_view
+
+
 def hash_client_ip(ip_address: str | None) -> str | None:
     if not ip_address:
         return None
@@ -52,6 +104,16 @@ def ensure_admin_user(username: str, password: str) -> AdminUser:
         return existing
 
     return AdminUser(username=username, password_hash=hash_password(password))
+
+
+def ensure_student_user(nickname: str, password: str) -> StudentUser:
+    existing = StudentUser.query.filter_by(nickname=nickname).first()
+    if existing:
+        existing.password_hash = hash_password(password)
+        existing.is_active = True
+        return existing
+
+    return StudentUser(nickname=nickname, password_hash=hash_password(password))
 
 
 def register_auth_commands(app: Flask) -> None:

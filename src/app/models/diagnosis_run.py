@@ -8,6 +8,7 @@ class DiagnosisRun(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     submission_id = db.Column(db.Integer, db.ForeignKey("submissions.id"), nullable=False, index=True)
+    audience = db.Column(db.String(16), nullable=False, default="teacher")
     model_name = db.Column(db.String(100), nullable=False)
     prompt_version = db.Column(db.String(32), nullable=False, default="v1")
     status = db.Column(db.String(16), nullable=False, default="pending")

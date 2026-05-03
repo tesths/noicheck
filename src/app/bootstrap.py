@@ -88,6 +88,7 @@ def _repair_legacy_schema(app: Flask) -> None:
 
     column_definitions = {
         "student_name": "VARCHAR(80)",
+        "student_user_id": "INTEGER",
         "problem_url": "VARCHAR(500)",
         "public_id": "VARCHAR(32)",
         "problem_source": "VARCHAR(32)",
@@ -97,6 +98,7 @@ def _repair_legacy_schema(app: Flask) -> None:
         "code_text": "TEXT",
         "client_ip_hash": "VARCHAR(64)",
         "fetch_status": "VARCHAR(16)",
+        "student_hint_status": "VARCHAR(16)",
         "diagnosis_status": "VARCHAR(16)",
         "created_at": timestamp_type,
     }
@@ -143,6 +145,7 @@ def _repair_legacy_schema(app: Flask) -> None:
             "language": "cpp",
             "code_text": "",
             "fetch_status": "pending",
+            "student_hint_status": "pending",
             "diagnosis_status": "pending",
         }
         for column_name, default_value in defaults.items():
@@ -169,6 +172,32 @@ def _repair_legacy_schema(app: Flask) -> None:
         )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_submissions_client_ip_hash ON submissions (client_ip_hash)")
+        )
+        connection.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_submissions_student_user_id ON submissions (student_user_id)")
+        )
+
+    _repair_legacy_diagnosis_runs_schema(app)
+
+
+def _repair_legacy_diagnosis_runs_schema(app: Flask) -> None:
+    inspector = inspect(db.engine)
+    if "diagnosis_runs" not in inspector.get_table_names():
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("diagnosis_runs")}
+    if "audience" in existing_columns:
+        return
+
+    dialect_name = db.engine.dialect.name
+    with db.engine.begin() as connection:
+        if dialect_name == "postgresql":
+            connection.execute(text("ALTER TABLE diagnosis_runs ADD COLUMN IF NOT EXISTS audience VARCHAR(16)"))
+        else:
+            connection.execute(text("ALTER TABLE diagnosis_runs ADD COLUMN audience VARCHAR(16)"))
+
+        connection.execute(
+            text("UPDATE diagnosis_runs SET audience = 'teacher' WHERE audience IS NULL OR audience = ''")
         )
 
 

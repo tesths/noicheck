@@ -27,6 +27,7 @@ class Submission(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     public_id = db.Column(db.String(32), nullable=False, unique=True, index=True, default=_generate_public_id)
     student_name = db.Column(db.String(80), nullable=False)
+    student_user_id = db.Column(db.Integer, db.ForeignKey("student_users.id"), nullable=True, index=True)
     problem_url = db.Column(db.String(500), nullable=False)
     problem_source = db.Column(db.String(32), nullable=False, default="openjudge")
     problem_title = db.Column(db.String(255), nullable=True)
@@ -35,8 +36,10 @@ class Submission(db.Model):
     code_text = db.Column(db.Text, nullable=False)
     client_ip_hash = db.Column(db.String(64), nullable=True, index=True)
     fetch_status = db.Column(db.String(16), nullable=False, default="pending")
+    student_hint_status = db.Column(db.String(16), nullable=False, default="pending")
     diagnosis_status = db.Column(db.String(16), nullable=False, default="pending")
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    student_user = db.relationship("StudentUser", back_populates="submissions")
     problem_snapshot = db.relationship(
         "ProblemSnapshot",
         back_populates="submission",
@@ -51,13 +54,25 @@ class Submission(db.Model):
 
     @property
     def latest_diagnosis_run(self):
-        if not self.diagnosis_runs:
+        teacher_runs = [item for item in self.diagnosis_runs if (item.audience or "teacher") == "teacher"]
+        if not teacher_runs:
             return None
-        return max(self.diagnosis_runs, key=lambda item: item.created_at)
+        return max(teacher_runs, key=lambda item: item.created_at)
+
+    @property
+    def latest_student_hint_run(self):
+        student_runs = [item for item in self.diagnosis_runs if item.audience == "student"]
+        if not student_runs:
+            return None
+        return max(student_runs, key=lambda item: item.created_at)
 
     @property
     def fetch_status_label(self) -> str:
         return _status_label(self.fetch_status)
+
+    @property
+    def student_hint_status_label(self) -> str:
+        return _status_label(self.student_hint_status)
 
     @property
     def diagnosis_status_label(self) -> str:
