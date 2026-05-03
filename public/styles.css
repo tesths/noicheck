@@ -297,12 +297,6 @@ textarea {
   gap: 10px;
 }
 
-.student-actions-stack,
-.student-name-stack {
-  display: grid;
-  gap: 10px;
-}
-
 .inline-edit-form {
   display: flex;
   gap: 8px;
@@ -320,12 +314,6 @@ textarea {
   width: 150px;
   padding: 10px 12px;
   border-radius: 14px;
-}
-
-.student-name-stack .admin-inline-input,
-.student-reset-stack .admin-reset-input {
-  width: 100%;
-  min-width: 170px;
 }
 
 .compact-copy {
@@ -346,8 +334,8 @@ table {
   border-collapse: collapse;
 }
 
-.student-management-table {
-  min-width: 1180px;
+.student-overview-table {
+  min-width: 860px;
 }
 
 th,
@@ -375,7 +363,6 @@ th {
 }
 
 .student-cell,
-.student-username-cell,
 .student-meta-cell,
 .student-count-cell {
   vertical-align: middle;
@@ -388,22 +375,7 @@ th {
 }
 
 .student-name-cell {
-  min-width: 220px;
-}
-
-.student-username-cell {
-  min-width: 110px;
-}
-
-.student-username {
-  display: inline-flex;
-  align-items: center;
-  white-space: nowrap;
-  padding: 6px 10px;
-  border-radius: 999px;
-  background: rgba(124, 53, 24, 0.08);
-  color: var(--accent-strong);
-  font-size: 13px;
+  min-width: 240px;
 }
 
 .student-meta-cell {
@@ -416,9 +388,33 @@ th {
   white-space: nowrap;
 }
 
-.student-reset-stack {
+.student-summary {
   display: grid;
-  gap: 10px;
+  gap: 6px;
+}
+
+.student-summary strong {
+  font-size: 16px;
+}
+
+.table-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.detail-form-panel {
+  max-width: 420px;
+}
+
+.student-detail-actions {
+  display: grid;
+  gap: 16px;
+}
+
+.student-detail-actions form {
+  margin: 0;
 }
 
 .status,

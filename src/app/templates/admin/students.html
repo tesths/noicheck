@@ -39,13 +39,11 @@
 
   {% if students %}
     <div class="table-shell spaced-table">
-      <table class="student-management-table">
+      <table class="student-overview-table">
         <thead>
           <tr>
-            <th>真实姓名</th>
-            <th>用户名</th>
+            <th>学生</th>
             <th>状态</th>
-            <th>创建时间（北京时间）</th>
             <th>上次登录（北京时间）</th>
             <th>提交数</th>
             <th>操作</th>
@@ -55,38 +53,20 @@
           {% for student in students %}
             <tr>
               <td class="student-name-cell">
-                <form class="student-name-stack" method="post" action="{{ url_for('admin.update_student_profile', student_id=student.id) }}">
-                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <input class="admin-inline-input" type="text" name="real_name" maxlength="80" required value="{{ student.real_name }}">
-                  <button class="ghost-button mini-button" type="submit">保存姓名</button>
-                </form>
+                <div class="student-summary">
+                  <strong>{{ student.display_name }}</strong>
+                  <p class="table-note">创建于 {{ student.created_at|beijing_datetime }}</p>
+                </div>
               </td>
-              <td class="student-username-cell"><span class="student-username">{{ student.nickname }}</span></td>
               <td class="status-cell">
                 <span class="status {% if student.is_active %}status-success{% else %}status-failed{% endif %}">
                   {{ "已启用" if student.is_active else "已停用" }}
                 </span>
               </td>
-              <td class="student-meta-cell">{{ student.created_at|beijing_datetime }}</td>
               <td class="student-meta-cell">{{ student.last_login_at|beijing_datetime }}</td>
               <td class="student-count-cell">{{ student.active_submission_count }}</td>
               <td class="actions-cell">
-                <div class="student-actions-stack">
-                  <div class="row-actions">
-                    <a class="ghost-button mini-button" href="{{ url_for('admin.student_submission_list', student_id=student.id) }}">查看提交</a>
-                    <form method="post" action="{{ url_for('admin.toggle_student_active', student_id=student.id) }}">
-                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                      <button class="ghost-button mini-button" type="submit">
-                        {{ "停用" if student.is_active else "启用" }}
-                      </button>
-                    </form>
-                  </div>
-                  <form class="student-reset-stack" method="post" action="{{ url_for('admin.reset_student_password', student_id=student.id) }}">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input class="admin-reset-input" type="password" name="password" placeholder="新密码" required>
-                    <button class="ghost-button mini-button" type="submit">重置密码</button>
-                  </form>
-                </div>
+                <a class="ghost-button mini-button" href="{{ url_for('admin.student_detail', student_id=student.id) }}">管理学生</a>
               </td>
             </tr>
           {% endfor %}

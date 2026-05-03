@@ -132,12 +132,12 @@ def test_student_management_actions_use_unified_button_style(app, client):
     soup = BeautifulSoup(response.data, "html.parser")
 
     assert response.status_code == 200
-    detail_link = next(link for link in soup.select("a") if link.get_text(strip=True) == "查看提交")
+    detail_link = next(link for link in soup.select("a") if link.get_text(strip=True) == "管理学生")
     assert "ghost-button" in detail_link.get("class", [])
     assert "mini-button" in detail_link.get("class", [])
 
 
-def test_student_management_page_uses_roomier_table_layout(app, client):
+def test_student_management_page_uses_summary_list_layout(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         student = StudentUser(nickname="mcx", real_name="马晨曦", password_hash=hash_password("pw-1"))
@@ -149,10 +149,53 @@ def test_student_management_page_uses_roomier_table_layout(app, client):
     soup = BeautifulSoup(response.data, "html.parser")
 
     assert response.status_code == 200
-    table = soup.select_one(".student-management-table")
+    table = soup.select_one(".student-overview-table")
     assert table is not None
-    assert soup.select_one(".student-name-stack") is not None
-    assert soup.select_one(".student-actions-stack") is not None
+    assert soup.select_one(".student-name-stack") is None
+    assert soup.select_one(".student-actions-stack") is None
+
+
+def test_admin_can_open_student_detail_page(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.commit()
+        student_id = student.id
+
+    _login_admin(client)
+    response = client.get(f"/admin/students/{student_id}")
+
+    assert response.status_code == 200
+    assert "张小明（stu01）".encode() in response.data
+    assert "账号操作".encode() in response.data
+    assert "重置密码".encode() in response.data
+    assert "查看这个学生的全部提交".encode() in response.data
+
+
+def test_student_detail_actions_can_redirect_back_to_detail(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.commit()
+        student_id = student.id
+
+    _login_admin(client)
+    response = client.post(
+        f"/admin/students/{student_id}/profile",
+        data={"real_name": "张老师", "return_to": "detail"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith(f"/admin/students/{student_id}")
 
 
 def test_student_submission_list_is_paginated_by_20(app, client):

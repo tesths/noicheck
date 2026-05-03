@@ -65,6 +65,12 @@ def _submission_detail_query(public_id: str):
     return Submission.query.filter_by(public_id=public_id, deleted_at=None)
 
 
+def _student_redirect_response(student_id: int):
+    if request.form.get("return_to", "").strip() == "detail":
+        return redirect(url_for("admin.student_detail", student_id=student_id))
+    return redirect(url_for("admin.student_list"))
+
+
 def _delete_redirect_response():
     student_id = request.form.get("student_id", "").strip()
     if student_id:
@@ -190,6 +196,13 @@ def student_list():
     return render_template("admin/students.html", students=students)
 
 
+@admin_bp.get("/students/<int:student_id>")
+@login_required
+def student_detail(student_id: int):
+    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    return render_template("admin/student_detail.html", student=student)
+
+
 @admin_bp.post("/students")
 @login_required
 def create_student():
@@ -241,7 +254,7 @@ def update_student_profile(student_id: int):
     except SQLAlchemyError:
         db.session.rollback()
         flash("更新真实姓名失败，请稍后再试。", "error")
-    return redirect(url_for("admin.student_list"))
+    return _student_redirect_response(student_id)
 
 
 @admin_bp.post("/students/<int:student_id>/reset-password")
@@ -257,7 +270,7 @@ def reset_student_password(student_id: int):
     student.is_active = True
     db.session.commit()
     flash(f"学生 {student.nickname} 密码已重置。", "success")
-    return redirect(url_for("admin.student_list"))
+    return _student_redirect_response(student_id)
 
 
 @admin_bp.post("/students/<int:student_id>/toggle-active")
@@ -267,4 +280,4 @@ def toggle_student_active(student_id: int):
     student.is_active = not student.is_active
     db.session.commit()
     flash(f"学生 {student.nickname} 已{'启用' if student.is_active else '停用'}。", "success")
-    return redirect(url_for("admin.student_list"))
+    return _student_redirect_response(student_id)
