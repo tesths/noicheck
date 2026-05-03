@@ -469,7 +469,7 @@ def test_teacher_review_detail_hides_teacher_result_from_student(app, client):
     assert "correct_program".encode() not in detail_response.data
 
 
-def test_admin_can_view_student_hint_for_self_check_submission(app, client):
+def test_admin_detail_hides_student_hint_and_shows_teacher_diagnosis_for_self_check_submission(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
         student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
@@ -481,7 +481,7 @@ def test_admin_can_view_student_hint_for_self_check_submission(app, client):
             submission_mode="self_check",
             fetch_status="success",
             student_hint_status="success",
-            diagnosis_status="pending",
+            diagnosis_status="success",
         )
         db.session.add_all([admin, student, submission])
         db.session.flush()
@@ -510,6 +510,33 @@ def test_admin_can_view_student_hint_for_self_check_submission(app, client):
                 summary_text="先检查循环边界。",
             )
         )
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="teacher",
+                model_name="deepseek-v4-pro",
+                prompt_version="v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "核心问题更像是循环结束条件写错了。",
+                    "confidence": "high",
+                    "missing_context": [],
+                    "possible_issues": [
+                        {
+                            "title": "结束条件少看了一位",
+                            "location": "主循环结束条件",
+                            "evidence": "最后一个字符可能没有进入判断。",
+                            "explanation": "这会让尾部数字漏统计。",
+                            "suggested_fix": "检查循环边界是否覆盖到最后一个字符。",
+                        }
+                    ],
+                    "teacher_talking_points": ["先让学生手算最后一个字符会不会被检查到。"],
+                    "next_step_checks": ["用 abc123 和 000 再测一次。"],
+                    "correct_program": "#include <iostream>\nint main(){return 0;}",
+                },
+                summary_text="核心问题更像是循环结束条件写错了。",
+            )
+        )
         db.session.commit()
         public_id = submission.public_id
 
@@ -521,8 +548,15 @@ def test_admin_can_view_student_hint_for_self_check_submission(app, client):
     assert "自己提交".encode() in list_response.data
     assert "学生提示".encode() in list_response.data
     assert detail_response.status_code == 200
-    assert "先检查循环边界".encode() in detail_response.data
-    assert "边界可能偏一位".encode() in detail_response.data
+    assert "学生提示".encode() not in detail_response.data
+    assert "学生提示状态".encode() not in detail_response.data
+    assert "先检查循环边界".encode() not in detail_response.data
+    assert "边界可能偏一位".encode() not in detail_response.data
+    assert "AI 诊断".encode() in detail_response.data
+    assert "核心问题更像是循环结束条件写错了".encode() in detail_response.data
+    assert "结束条件少看了一位".encode() in detail_response.data
+    assert "参考程序".encode() in detail_response.data
+    assert b"&lt;iostream&gt;" in detail_response.data
 
 
 def test_admin_can_queue_teacher_diagnosis_after_student_hint_succeeds(app, client):

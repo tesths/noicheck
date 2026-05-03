@@ -53,10 +53,6 @@
         <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
       </div>
       <div>
-        <dt>学生提示状态</dt>
-        <dd><span class="status status-{{ submission.student_hint_status }}">{{ submission.student_hint_status_label }}</span></dd>
-      </div>
-      <div>
         <dt>老师诊断状态</dt>
         <dd><span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span></dd>
       </div>
@@ -101,51 +97,6 @@
       {% endif %}
     {% else %}
       <p class="empty-state">没有题面快照。</p>
-    {% endif %}
-  </article>
-
-  <article class="panel">
-    <p class="eyebrow">学生提示</p>
-    {% if submission.student_hint_status in ["queued", "running"] %}
-      <p class="empty-state">学生提示正在后台处理中，请稍后刷新查看。</p>
-    {% elif submission.latest_student_hint_run %}
-      {% if submission.latest_student_hint_run.status == "success" %}
-        {% set result = submission.latest_student_hint_run.structured_result_json %}
-        <div class="diagnosis-summary">
-          <p class="eyebrow">提示摘要</p>
-          <h2>{{ result.overall_assessment }}</h2>
-          <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
-        </div>
-        {% for issue in result.possible_issues %}
-          <section class="issue-card">
-            <h3>{{ loop.index }}. {{ issue.title }}</h3>
-            <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
-            <p><strong>证据：</strong>{{ issue.evidence }}</p>
-            <p><strong>说明：</strong>{{ issue.explanation }}</p>
-            <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
-          </section>
-        {% endfor %}
-        {% if result.next_step_checks %}
-          <section class="note-block">
-            <h3>下一步检查</h3>
-            <ul>
-              {% for item in result.next_step_checks %}
-                <li>{{ item }}</li>
-              {% endfor %}
-            </ul>
-          </section>
-        {% endif %}
-        {% if result.encouragement_or_strategy %}
-          <section class="note-block">
-            <h3>学生可执行建议</h3>
-            <p>{{ result.encouragement_or_strategy }}</p>
-          </section>
-        {% endif %}
-      {% else %}
-        <p class="empty-state">{{ submission.latest_student_hint_run.error_message or "学生提示暂时未生成成功。" }}</p>
-      {% endif %}
-    {% else %}
-      <p class="empty-state">这条提交没有学生提示记录。</p>
     {% endif %}
   </article>
 
