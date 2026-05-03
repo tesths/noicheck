@@ -334,6 +334,10 @@ table {
   border-collapse: collapse;
 }
 
+.submission-list-table {
+  min-width: 1240px;
+}
+
 .student-overview-table {
   min-width: 860px;
 }
@@ -372,6 +376,29 @@ th {
   display: inline-flex;
   align-items: center;
   white-space: nowrap;
+}
+
+.submission-time-cell,
+.submission-student-cell,
+.submission-mode-cell,
+.submission-title-cell {
+  white-space: nowrap;
+}
+
+.submission-time-cell {
+  min-width: 140px;
+}
+
+.submission-student-cell {
+  min-width: 150px;
+}
+
+.submission-mode-cell {
+  min-width: 84px;
+}
+
+.submission-title-cell {
+  min-width: 260px;
 }
 
 .student-name-cell {
