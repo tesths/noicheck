@@ -270,3 +270,59 @@ def test_deepseek_service_requires_correct_program():
                 code_text="int main() { return 0; }",
             )
         )
+
+
+def test_ai_service_raises_provider_neutral_error_when_api_key_missing():
+    service = DeepSeekDiagnosisService(
+        api_key="",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=FakeClient(),
+    )
+
+    with pytest.raises(DiagnosisServiceError, match="未配置 AI API Key。"):
+        service.diagnose(
+            DiagnosisPayload(
+                student_name="小明",
+                problem_url="http://noi.openjudge.cn/ch0107/20/",
+                problem_title="20:删除单词后缀",
+                description_text="按要求删除单词后缀。",
+                input_text="一个单词。",
+                output_text="删除后缀后的结果。",
+                sample_input_text="refer",
+                sample_output_text="ref",
+                code_text="int main() { return 0; }",
+            )
+        )
+
+
+def test_ai_service_raises_provider_neutral_error_when_client_call_fails():
+    class FailingCompletions:
+        def create(self, **kwargs):
+            raise RuntimeError("boom")
+
+    class FailingClient:
+        def __init__(self):
+            self.chat = SimpleNamespace(completions=FailingCompletions())
+
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=FailingClient(),
+    )
+
+    with pytest.raises(DiagnosisServiceError, match="调用 AI 服务失败：boom"):
+        service.diagnose(
+            DiagnosisPayload(
+                student_name="小明",
+                problem_url="http://noi.openjudge.cn/ch0107/20/",
+                problem_title="20:删除单词后缀",
+                description_text="按要求删除单词后缀。",
+                input_text="一个单词。",
+                output_text="删除后缀后的结果。",
+                sample_input_text="refer",
+                sample_output_text="ref",
+                code_text="int main() { return 0; }",
+            )
+        )

@@ -1,47 +1,56 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-04-27
+更新时间：2026-05-03
 
 ## 1. 项目目标
 
-这个项目用于收集学生的 OpenJudge 代码提交，并自动给老师生成可参考的 AI 诊断结果。
+这个项目用于收集学生的 OpenJudge 代码提交，并分别服务两类使用者：
 
-当前目标是先把 v1 跑通，重点覆盖下面几件事：
+- 学生端：登录后提交代码，获得只给提示、不直接给答案的 AI 引导。
+- 教师端：查看所有提交、题面快照、学生提示，并在需要时生成完整诊断和参考程序。
 
-- 学生无需登录，直接提交姓名、题目链接和 C++ 代码。
-- 系统自动抓取 OpenJudge 题面。
-- 系统自动调用 DeepSeek 生成诊断结果和参考程序。
-- 老师通过后台查看所有提交、题面快照和诊断结果。
-- 如果某次后台任务失败，老师可以手动重试。
+当前阶段已经进入“统一登录入口 + 学生双提交流程 + 教师分流查看”的阶段。
 
 ## 2. 当前实现状态
 
-当前主流程已经不是“老师点击后再分析”，而是：
+当前系统已经落地这些能力：
 
-- 学生提交后，系统立即落库。
-- 提交记录会自动进入后台队列。
-- 后台任务会先抓题，再继续 AI 诊断。
-- 老师进入后台时，正常情况下应该直接看到已经生成好的结果。
-- 只有失败场景下，老师才需要手动点击“重新生成 AI 诊断”。
+- 首页改成统一登录入口 `/`。
+- 匿名提交入口 `/submit` 已下线，只保留重定向和提示。
+- 新增学生登录入口 `/student/*`。
+- 新增教师后台学生管理页 `/admin/students`。
+- 学生提交已拆成两种模式：`自己提交`、`提交给老师`。
+- 自己提交会进入“学生版 AI 提示”链路。
+- 提交给老师会自动进入“老师版完整诊断”链路。
+- 学生版 AI 只做引导，不返回正确答案，不返回参考程序。
+- 教师后台可以看到学生提示，也可以看到老师版完整诊断和参考程序。
+- 抓题和 AI 任务继续走异步队列。
+- AI 配置已兼容 `AI_*` 与旧 `DEEPSEEK_*` 变量，可切换 OpenRouter。
 
-这套流程已经在代码里落地，并有测试覆盖。
+目前学生端和教师端的 AI 能力已经分流：
+
+- 学生端：只能看到提示结果。
+- 教师端：可以看到完整诊断与参考程序。
 
 ## 3. 当前架构
 
 ### 3.1 Web 主站
 
 - 主站框架：Flask
-- 学生入口：`/submit`
+- 统一登录入口：`/`
+- 匿名提交兼容跳转：`/submit`
+- 学生端入口：`/student/*`
 - 教师后台：`/admin/*`
 - 内部任务入口：`/internal/jobs/process`
 
 主站负责：
 
 - 表单校验
+- 账号登录态处理
 - 提交记录落库
-- 展示后台页面
+- 教师和学生页面展示
 - 接收内部任务请求
-- 执行抓题和 AI 诊断的 Python 逻辑
+- 执行抓题和 AI 处理逻辑
 
 ### 3.2 异步任务
 
@@ -49,56 +58,74 @@
 - Queue consumer：`api/queues/process-submission.js`
 - Python 任务处理：`src/app/services/jobs.py`
 
-设计上采用了“Node 只负责接队列，Python 继续做业务”的方式。
+当前存在两类主要 AI 任务链路：
 
-这样做的原因是：
-
-- Flask 里的抓题和 AI 逻辑已经存在，没必要复制一份到 Node。
-- Node consumer 只负责把队列消息转发到 Flask 的内部任务接口。
-- 真正的题面抓取、状态回写、AI 诊断仍然由 Python 统一处理。
+- 教师完整诊断：`fetch-and-diagnose` / `diagnose-submission`
+- 学生提示链路：`fetch-and-student-diagnose`
 
 ### 3.3 数据存储
 
 - 本地开发：SQLite
 - 线上部署：Postgres
 
-生产环境要求使用公网 Postgres，不能继续使用 SQLite。
+生产环境仍然要求使用公网 Postgres。
 
 ## 4. 当前业务流程
 
-### 4.1 学生提交
+### 4.1 登录入口
 
-1. 学生访问 `/submit`。
-2. 提交姓名、OpenJudge 题目链接和代码。
-3. Flask 校验参数并写入 `submissions`。
-4. 系统自动把任务入队为 `fetch-and-diagnose`。
-5. 页面跳转到成功页，提示“已进入后台排队”。
+1. 用户访问 `/`。
+2. 根据身份进入学生登录或教师登录。
+3. 未登录访问旧 `/submit` 时，会被重定向回统一入口。
 
-### 4.2 队列消费
+### 4.2 学生端链路
 
-1. Vercel Queue 触发 `api/queues/process-submission.js`。
-2. 这个 Node 函数把消息转发到 `/internal/jobs/process`。
-3. Flask 内部接口校验 `INTERNAL_JOB_TOKEN`。
-4. Python 根据任务类型执行：
-   - 抓题
-   - 状态更新
-   - AI 诊断
-   - 诊断结果入库
+1. 老师在 `/admin/students` 创建学生账号。
+2. 学生访问 `/student/login` 登录。
+3. 学生在 `/student/submissions/new` 选择提交方式。
+4. 若选择 `自己提交`：
+   - 落库时绑定 `student_user_id`
+   - 自动入队 `fetch-and-student-diagnose`
+   - 学生只看到提示结果
+5. 若选择 `提交给老师`：
+   - 落库时绑定 `student_user_id`
+   - 自动入队 `fetch-and-diagnose`
+   - 学生只能看到老师处理状态，看不到正确程序
 
-### 4.3 教师后台
+学生端结果只允许展示：
 
-老师后台用于：
+- 可能出错的方向
+- 建议检查的位置
+- 自查步骤
+- 提示策略
 
-- 查看提交列表
+学生端不允许展示：
+
+- 正确答案
+- 参考程序
+- `correct_program`
+
+### 4.3 教师后台链路
+
+老师后台当前用于：
+
+- 查看所有提交
+- 查看提交类型
 - 查看抓题状态
-- 查看诊断状态
+- 查看学生提示状态
+- 查看教师诊断状态
 - 查看题面快照
-- 查看 AI 诊断与参考程序
-- 在失败时重新触发诊断
+- 查看教师版 AI 诊断与参考程序
+- 创建学生账号
+- 重置学生密码
+- 禁用 / 启用学生账号
+- 在需要时手动触发教师完整诊断
 
-## 5. 当前状态字段
+## 5. 当前数据模型与状态字段
 
-`Submission.fetch_status` 当前使用这些状态：
+### 5.1 提交状态
+
+`Submission.fetch_status` 使用：
 
 - `pending`
 - `queued`
@@ -106,7 +133,15 @@
 - `success`
 - `failed`
 
-`Submission.diagnosis_status` 当前也使用这些状态：
+`Submission.student_hint_status` 使用：
+
+- `pending`
+- `queued`
+- `running`
+- `success`
+- `failed`
+
+`Submission.diagnosis_status` 使用：
 
 - `pending`
 - `queued`
@@ -122,71 +157,111 @@
 - 成功
 - 失败
 
+### 5.2 提交模式
+
+`Submission.submission_mode` 当前区分两类提交：
+
+- `self_check`
+- `teacher_review`
+
+含义如下：
+
+- `self_check`：学生自己排查，学生端可见 AI 提示。
+- `teacher_review`：学生提交给老师，老师端可见完整诊断与参考程序。
+
+### 5.3 诊断结果分流
+
+`DiagnosisRun.audience` 当前区分两类结果：
+
+- `student`
+- `teacher`
+
+含义如下：
+
+- `student`：学生端提示结果，不含正确程序。
+- `teacher`：教师端完整诊断，可含参考程序。
+
+### 5.4 学生账号
+
+新增 `student_users` 表，核心字段包括：
+
+- `nickname`
+- `password_hash`
+- `is_active`
+- `created_at`
+- `last_login_at`
+
+`submissions.student_user_id` 用于绑定学生和提交记录。
+
 ## 6. 关键文件
 
 下面这些文件是当前系统的核心入口：
 
 - `src/app/routes/public.py`
-  - 学生提交入口
+  - 统一登录入口与旧匿名入口重定向
+- `src/app/routes/student.py`
+  - 学生登录、列表、提交方式选择、两类提交、详情
 - `src/app/routes/admin.py`
-  - 教师后台和失败重试入口
+  - 教师后台、学生管理、教师诊断触发
 - `src/app/routes/internal.py`
   - 内部任务接口
 - `src/app/services/jobs.py`
-  - 抓题、诊断、状态流转
-- `src/app/services/job_queue.py`
-  - 队列发消息封装
+  - 抓题、学生提示、教师诊断、状态流转
+- `src/app/services/ai.py`
+  - 教师版 AI 与学生版 AI 提示
+- `src/app/services/auth.py`
+  - 教师认证、学生认证
+- `src/app/schemas/diagnosis.py`
+  - 教师版结构化诊断 schema
+- `src/app/schemas/student_hint.py`
+  - 学生版提示 schema
+- `src/app/models/student_user.py`
+  - 学生账号模型
+- `src/app/models/submission.py`
+  - 提交模型、提交类型与状态字段
+- `src/app/models/diagnosis_run.py`
+  - AI 结果记录与 audience 分流
 - `api/queues/process-submission.js`
   - Vercel Queue consumer
-- `src/app/config.py`
-  - 环境变量与运行配置
-- `vercel.json`
-  - Vercel 部署配置
 - `.env.example`
-  - 生产环境变量模板
+  - 环境变量模板
 
 ## 7. 本轮已完成事项
 
-本轮对话里已经完成的主要工作如下：
+本轮对话已经完成这些工作：
 
-- 接入 Vercel Queues 异步方案。
-- 新增内部任务接口，保护后台任务调用。
-- 新增 Node consumer，把队列消息转发给 Flask。
-- 学生提交后自动触发抓题和 AI 诊断。
-- 教师后台改成以“查看结果和失败重试”为主。
-- 补充 `.env.example`，方便直接复制到 Vercel。
-- 修复 Vercel 部署中的 `builds/functions` 冲突。
-- 修复无效 `runtime` 配置导致的部署报错。
-- 修复 Flask 入口在 `functions` 里的匹配报错。
-- 修复线上 CSS 404，统一改为 `/styles.css`。
+- 新增学生账号体系。
+- 新增学生登录、退出、提交列表、新建提交、提交详情页面。
+- 新增教师后台学生管理页面。
+- 学生账号支持创建、重置密码、禁用 / 启用。
+- 学生提交会绑定学生账号。
+- 新增学生版 AI 提示 schema 和 prompt。
+- 学生版 AI 明确禁止输出正确答案和参考程序。
+- 教师版完整诊断能力保留。
+- 新增 `DiagnosisRun.audience`，区分学生结果和教师结果。
+- 新增 `Submission.student_hint_status`。
+- 修复学生提交在显式主键兜底保存时可能丢失学生归属的问题。
+- 修复学生提示处理中教师仍可重复发起教师诊断的并发冲突问题。
+- 教师后台补上“学生管理”可见入口。
+- 补充 favicon，避免浏览器继续请求缺失的 `/favicon.ico`。
+- 完成单元测试与浏览器点击验证。
+- 首页改成统一登录入口，旧匿名提交改为重定向提示。
+- 新增 `Submission.submission_mode`，明确区分 `self_check` 和 `teacher_review`。
+- 学生端拆成“自己提交”和“提交给老师”两套表单与处理链路。
+- 教师后台列表和详情页补充提交类型、学生提示结果和老师版结果分流展示。
+- AI 配置兼容 `AI_*` 与旧 `DEEPSEEK_*`，`.env.example` 默认示例改为 OpenRouter。
 
-## 8. 部署说明
+## 8. 部署与环境变量说明
 
-当前 Vercel 配置基于：
+建议直接参考根目录 `.env.example`。
 
-- `framework: "flask"`
-- `functions` 里只配置 `api/queues/process-submission.js`
-- 不再混用 `builds`
-
-当前样式资源路径为：
-
-- `/styles.css`
-
-不要再使用：
-
-- `/public/styles.css`
-
-## 9. 环境变量说明
-
-建议直接参考根目录的 `.env.example`。
-
-部署到 Vercel 时，至少需要确认下面这些变量已经正确设置：
+部署到 Vercel 时，至少需要确认这些变量：
 
 - `SECRET_KEY`
 - `DATABASE_URL`
-- `DEEPSEEK_API_KEY`
-- `DEEPSEEK_BASE_URL`
-- `DEEPSEEK_MODEL`
+- `AI_API_KEY`
+- `AI_BASE_URL`
+- `AI_MODEL`
 - `ADMIN_INIT_USERNAME`
 - `ADMIN_INIT_PASSWORD`
 - `JOB_QUEUE_BACKEND=vercel`
@@ -197,21 +272,26 @@
 
 补充说明：
 
-- `DATABASE_URL` 线上必须是 Postgres。
-- `APP_BASE_URL` 应该填正式站点地址。
-- `.env.example` 里已经生成了一组可直接复制的密钥，但如果仓库后续公开，建议重新轮换。
+- 当前学生账号由教师后台创建，不依赖额外环境变量。
+- 线上数据库仍然必须使用 Postgres。
+- `APP_BASE_URL` 需要指向正式站点地址。
+- 若线上仍保留旧变量名，系统会继续兼容读取 `DEEPSEEK_*`。
 
-## 10. 当前已知风险与后续建议
+## 9. 当前已知风险
 
-目前还需要留意这些点：
+目前还需要继续留意这些点：
 
-- 线上要继续观察 Queue trigger 是否稳定触发。
-- AI 诊断如果经常接近 60 秒，可能还要继续优化超时策略。
-- 现在的任务状态已经够用，但还没有做更细的失败分类。
-- `TASK_QUEUE.md` 里保留了部分历史任务记录，阅读时要以本文件描述的“当前状态”为准。
+- 线上 Queue trigger 仍需继续观察稳定性。
+- OpenJudge 抓题稳定性仍依赖站点可访问性。
+- 学生版 AI 目前是静态代码提示，不是真实编译执行判题。
+- 还没有做学生名单批量导入。
+- 还没有做更细的失败分类和后台监控。
+
+## 10. 下一步建议
 
 建议下一步优先做：
 
-- 在 Vercel 线上完整走一遍真实提交流程。
-- 核对抓题成功率和 AI 成功率。
-- 如果需要，再补一个面向交付的 `README.md`。
+- 在线上环境完整走一遍学生登录、提交、教师查看的真实链路。
+- 评估是否需要引入真实代码执行沙箱。
+- 评估是否需要做学生批量导入。
+- 补充面向交付的 README 或部署手册。

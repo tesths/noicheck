@@ -28,6 +28,14 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _first_env_value(*names: str, default: str = "") -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return default
+
+
 def _is_production_environment() -> bool:
     vercel_env = os.getenv("VERCEL_ENV", "").strip().lower()
     flask_env = os.getenv("FLASK_ENV", os.getenv("APP_ENV", "")).strip().lower()
@@ -68,9 +76,12 @@ class Config:
 
     WTF_CSRF_TIME_LIMIT = None
 
-    DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
-    DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com").strip()
-    DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-pro").strip()
+    AI_API_KEY = _first_env_value("AI_API_KEY", "DEEPSEEK_API_KEY")
+    AI_BASE_URL = _first_env_value("AI_BASE_URL", "DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
+    AI_MODEL = _first_env_value("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-v4-pro")
+    DEEPSEEK_API_KEY = AI_API_KEY
+    DEEPSEEK_BASE_URL = AI_BASE_URL
+    DEEPSEEK_MODEL = AI_MODEL
     ADMIN_INIT_USERNAME = os.getenv("ADMIN_INIT_USERNAME", "").strip()
     ADMIN_INIT_PASSWORD = os.getenv("ADMIN_INIT_PASSWORD", "")
     BOOTSTRAP_ON_STARTUP = _env_flag("BOOTSTRAP_ON_STARTUP", default=IS_PRODUCTION)
