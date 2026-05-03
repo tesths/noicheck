@@ -8,7 +8,7 @@ from openai import OpenAI
 from ..schemas import DiagnosisResult, StudentHintResult
 
 PROMPT_VERSION = "v2"
-STUDENT_PROMPT_VERSION = "student-v2"
+STUDENT_PROMPT_VERSION = "student-v3"
 
 
 class DiagnosisServiceError(Exception):
@@ -125,14 +125,25 @@ class DeepSeekDiagnosisService:
             return (
                 "请根据题目和学生程序，帮学生找出程序可能错在哪里。"
                 "不要提供正确答案、参考程序或完整可提交代码。"
+                "不能直接给答案，一定要一步一步引导学生自己发现问题。"
                 "不要假装运行过代码，只能根据题目和代码推断。"
                 "除代码外，所有说明文字都必须使用简体中文。"
+                "先用一句简短的话给出总体提示诊断，再展开后面的内容。"
+                "解释原因时要尽量用小学生也能听懂的话，不要堆术语。"
+                "要明确告诉学生下一步先做什么，步骤尽量小，一次只说一件事。"
+                "语气要真诚、温和、鼓励，不能挖苦，也不要只说空话。"
+                "如果学生提交的内容明显不是 C++ 程序，或和题目无关，不要继续分析代码逻辑。"
+                "这种情况下要直接说明这里只能提交题目对应的程序代码，并提醒重新提交。"
                 "诊断必须分成两部分："
                 "第一部分是诊断原因，要指出可能出错的代码位置；"
                 "第二部分是学生下一步提示，要给出可操作的检查方向、思路或鼓励，但不要直接写出正确答案。"
                 "请输出严格 JSON，字段固定为 "
                 "overall_assessment, confidence, possible_issues, next_step_checks, encouragement_or_strategy。"
                 "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
+                "overall_assessment 必须先给总体提示诊断。"
+                "possible_issues 的 explanation 和 suggested_fix 要尽量短、具体、易懂。"
+                "next_step_checks 要按先后顺序告诉学生下一步做什么。"
+                "encouragement_or_strategy 要给出真实鼓励。"
                 "不要返回 correct_program，也不要在任何字段中写出完整参考程序。"
                 + self._build_output_contract(audience)
             )
@@ -159,6 +170,9 @@ class DeepSeekDiagnosisService:
                     "输出重点只有两部分：",
                     "1. 诊断原因：指出程序可能错在哪里，并尽量说明可能出错的位置。",
                     "2. 学生下一步提示：给出可操作的检查方向、思路或鼓励，不要写出答案。",
+                    "请先给一个总体提示诊断，再解释原因，再告诉学生下一步做什么，最后给鼓励。",
+                    "解释时尽量用小学生也能听懂的话。",
+                    "如果学生提交的内容明显不是 C++ 程序代码，请直接提醒这里只能提交题目对应的程序代码，不要继续分析算法。",
                     "除代码外，请所有说明都使用简体中文。",
                     f"题目链接：{payload.problem_url}",
                     f"题目标题：{payload.problem_title or '未知'}",

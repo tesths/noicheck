@@ -77,6 +77,13 @@ def test_deepseek_service_generates_student_hint_without_reference_program():
 
     call = client.chat.completions.calls[0]
     assert "正确答案" in call["messages"][0]["content"]
+    assert "一步一步引导学生" in call["messages"][0]["content"]
+    assert "先用一句简短的话给出总体提示诊断" in call["messages"][0]["content"]
+    assert "用小学生也能听懂的话" in call["messages"][0]["content"]
+    assert "如果学生提交的内容明显不是 C++ 程序" in call["messages"][0]["content"]
+    assert "这里只能提交题目对应的程序代码" in call["messages"][0]["content"]
+    assert "明确告诉学生下一步先做什么" in call["messages"][0]["content"]
+    assert "语气要真诚、温和、鼓励" in call["messages"][0]["content"]
     assert "完整正确的 C++ 参考程序" not in call["messages"][1]["content"]
     assert isinstance(result, StudentHintResponse)
     assert isinstance(result.result, StudentHintResult)
@@ -158,6 +165,7 @@ def test_internal_job_endpoint_processes_student_hint_job(app, client, monkeypat
         assert submission.student_hint_status == "success"
         assert submission.diagnosis_status == "pending"
         assert submission.latest_student_hint_run.status == "success"
+        assert submission.latest_student_hint_run.prompt_version == "student-v3"
         assert submission.latest_diagnosis_run is None
         assert len(student_runs) == 1
 
