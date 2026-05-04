@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
 from src.app.extensions import db
-from src.app.models import AdminUser, Submission, StudentUser
+from src.app.models import AdminUser, DiagnosisRun, Submission, StudentUser
 from src.app.services.auth import hash_password
 
 
@@ -195,6 +195,90 @@ def test_admin_submission_list_student_label_uses_no_wrap_container(app, client)
     label = soup.select_one(".student-label")
     assert label is not None
     assert "马晨曦（mcx）" in label.get_text(strip=True)
+
+
+def test_admin_submission_list_provides_student_view_link(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="owner", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="success",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [
+                        {
+                            "title": "边界可能偏一位",
+                            "location": "主循环结束条件",
+                            "evidence": "最后一个字符可能没被处理。",
+                            "explanation": "这会让尾部数字漏统计。",
+                            "suggested_fix": "先手推一遍样例。",
+                        }
+                    ],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="teacher",
+                model_name="deepseek-v4-pro",
+                prompt_version="teacher-v1",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "老师版完整诊断",
+                    "confidence": "high",
+                    "missing_context": [],
+                    "possible_issues": [],
+                    "teacher_talking_points": [],
+                    "next_step_checks": [],
+                    "correct_program": "#include <iostream>\nint main(){return 0;}",
+                },
+                summary_text="老师版完整诊断",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_admin(client)
+    list_response = client.get("/admin/submissions")
+    list_soup = BeautifulSoup(list_response.data, "html.parser")
+
+    assert list_response.status_code == 200
+    student_view_link = next(link for link in list_soup.select("a") if link.get_text(strip=True) == "学生界面")
+    assert student_view_link.get("href", "").startswith(f"/admin/submissions/{public_id}/student-view")
+
+    detail_response = client.get(student_view_link.get("href"))
+    detail_soup = BeautifulSoup(detail_response.data, "html.parser")
+
+    assert detail_response.status_code == 200
+    assert "学生端".encode() in detail_response.data
+    assert "先检查循环边界".encode() in detail_response.data
+    assert "边界可能偏一位".encode() in detail_response.data
+    assert "老师版完整诊断".encode() not in detail_response.data
+    back_link = next(link for link in detail_soup.select("a") if link.get_text(strip=True) == "返回后台")
+    assert back_link.get("href") == "/admin/submissions"
 
 
 def test_admin_submission_list_uses_compact_single_page_layout(app, client):

@@ -1,16 +1,19 @@
 {% extends "base.html" %}
 {% block title %}提交详情 | NOI 错题诊断{% endblock %}
 {% block content %}
+{% set is_admin_preview = viewer_mode == "admin_preview" %}
 <section class="detail-grid">
   <article class="panel detail-hero">
     <div class="panel-header">
       <div>
-        <p class="eyebrow">学生端</p>
+        <p class="eyebrow">{% if is_admin_preview %}学生端预览{% else %}学生端{% endif %}</p>
         <h1>{{ submission.problem_title or submission.problem_url }}</h1>
       </div>
       <div class="panel-actions">
-        <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
-        <a class="text-link" href="{{ url_for('student.submissions') }}">返回列表</a>
+        {% if not is_admin_preview %}
+          <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
+        {% endif %}
+        <a class="text-link" href="{{ return_url or url_for('student.submissions') }}">{% if is_admin_preview %}返回后台{% else %}返回列表{% endif %}</a>
       </div>
     </div>
     <dl class="meta-grid">

@@ -37,6 +37,46 @@ def test_student_pages_require_login(client):
     assert "/student/login" in response.headers["Location"]
 
 
+def test_admin_login_clears_student_session(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.commit()
+
+    _login_student(client, "stu01", "pw-1")
+    student_response = client.get("/student/submissions")
+    assert student_response.status_code == 200
+
+    _login_admin(client)
+    admin_response = client.get("/admin/submissions")
+    student_after_admin_login = client.get("/student/submissions", follow_redirects=False)
+
+    assert admin_response.status_code == 200
+    assert student_after_admin_login.status_code == 302
+    assert "/student/login" in student_after_admin_login.headers["Location"]
+
+
+def test_student_login_clears_admin_session(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add_all([admin, student])
+        db.session.commit()
+
+    _login_admin(client)
+    admin_response = client.get("/admin/submissions")
+    assert admin_response.status_code == 200
+
+    _login_student(client, "stu01", "pw-1")
+    student_response = client.get("/student/submissions")
+    admin_after_student_login = client.get("/admin/submissions", follow_redirects=False)
+
+    assert student_response.status_code == 200
+    assert admin_after_student_login.status_code == 302
+    assert "/admin/login" in admin_after_student_login.headers["Location"]
+
+
 def test_admin_can_create_reset_and_disable_student(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
@@ -58,13 +98,12 @@ def test_admin_can_create_reset_and_disable_student(app, client):
         assert getattr(student, "real_name", None) == "张小明"
 
     _login_student(client, "stu01", "pw-001")
+    _login_admin(client)
 
     student_list_response = client.get("/admin/students")
     assert student_list_response.status_code == 200
     assert "张小明".encode() in student_list_response.data
     assert "stu01".encode() in student_list_response.data
-
-    _login_admin(client)
     reset_response = client.post(
         f"/admin/students/{student_id}/reset-password",
         data={"password": "pw-002"},
@@ -226,6 +265,37 @@ def test_student_submission_list_is_paginated_by_20(app, client):
 
     assert second_page.status_code == 200
     assert second_page.data.count("查看详情".encode()) == 1
+
+
+def test_student_submission_list_uses_centered_table_layout(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="小明", real_name="张小明", password_hash=hash_password("pass-123"))
+        submission = Submission(
+            student_name="小明",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            code_text="int main() { return 0; }",
+        )
+        db.session.add_all([student, submission])
+        db.session.commit()
+
+    _login_student(client, "小明", "pass-123")
+    response = client.get("/student/submissions")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    table = soup.select_one("table.student-submission-table")
+    assert table is not None
+
+
+def test_student_submission_list_styles_center_table_cells(client):
+    response = client.get("/styles.css")
+    css = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert ".student-submission-table td {" in css
+    assert "vertical-align: middle;" in css
 
 
 def test_student_new_page_shows_two_flow_options(app, client):

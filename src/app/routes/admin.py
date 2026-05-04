@@ -1,12 +1,18 @@
 from urllib.parse import urlsplit
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
-from flask_login import current_user, login_required, logout_user
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
+from flask_login import current_user, login_required
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
 from ..models import StudentUser, Submission
-from ..services.auth import authenticate_admin, ensure_student_user, hash_password, login_admin
+from ..services.auth import (
+    authenticate_admin,
+    ensure_student_user,
+    hash_password,
+    login_admin,
+    logout_admin,
+)
 from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job
 from ..services.pagination import paginate_query, normalize_page
@@ -143,7 +149,7 @@ def login():
 @admin_bp.post("/logout")
 @login_required
 def logout():
-    logout_user()
+    logout_admin()
     flash("已退出后台。", "success")
     return redirect(url_for("admin.login"))
 
@@ -168,6 +174,22 @@ def submission_detail(public_id: str):
     return render_template(
         "admin/submission_detail.html",
         submission=submission,
+        return_url=_admin_return_to_url() or url_for("admin.submission_list"),
+    )
+
+
+@admin_bp.get("/submissions/<public_id>/student-view")
+@login_required
+def submission_student_view(public_id: str):
+    submission = _submission_detail_query(public_id).first_or_404()
+    if submission.student_user is None:
+        abort(404)
+
+    return render_template(
+        "student/submission_detail.html",
+        student=submission.student_user,
+        submission=submission,
+        viewer_mode="admin_preview",
         return_url=_admin_return_to_url() or url_for("admin.submission_list"),
     )
 

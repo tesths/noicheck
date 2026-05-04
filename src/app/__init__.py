@@ -10,8 +10,7 @@ from .routes.admin import admin_bp
 from .routes.internal import internal_bp
 from .routes.public import public_bp
 from .routes.student import student_bp
-from .services.auth import register_auth_commands
-from .services.auth import current_student
+from .services.auth import current_student, enforce_exclusive_login, register_auth_commands
 from .services.timezone import format_beijing_time
 
 
@@ -45,9 +44,10 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
             bootstrap_app(app)
 
     @app.before_request
-    def _ensure_database_schema_ready() -> None:
+    def _prepare_request_state() -> None:
         if request.endpoint == "static":
             return
+        enforce_exclusive_login()
         ensure_database_schema(current_app)
 
     return app

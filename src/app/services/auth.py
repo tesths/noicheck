@@ -4,13 +4,16 @@ from functools import wraps
 
 import click
 from flask import Flask, flash, g, redirect, session, url_for
-from flask_login import login_user
+from flask_login import login_user, logout_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db, login_manager
 from ..models import AdminUser, StudentUser
 
 STUDENT_SESSION_KEY = "student_user_id"
+ACTIVE_ROLE_SESSION_KEY = "active_portal_role"
+ADMIN_ROLE = "admin"
+STUDENT_ROLE = "student"
 
 
 @login_manager.user_loader
@@ -38,7 +41,15 @@ def authenticate_admin(username: str, password: str) -> AdminUser | None:
 
 
 def login_admin(admin: AdminUser, remember: bool = False) -> None:
+    logout_student()
     login_user(admin, remember=remember)
+    session[ACTIVE_ROLE_SESSION_KEY] = ADMIN_ROLE
+
+
+def logout_admin() -> None:
+    logout_user()
+    if session.get(ACTIVE_ROLE_SESSION_KEY) == ADMIN_ROLE:
+        session.pop(ACTIVE_ROLE_SESSION_KEY, None)
 
 
 def authenticate_student(nickname: str, password: str) -> StudentUser | None:
@@ -50,13 +61,43 @@ def authenticate_student(nickname: str, password: str) -> StudentUser | None:
 
 
 def login_student(student: StudentUser) -> None:
+    logout_admin()
     session[STUDENT_SESSION_KEY] = student.id
+    session[ACTIVE_ROLE_SESSION_KEY] = STUDENT_ROLE
     g.current_student = student
 
 
 def logout_student() -> None:
     session.pop(STUDENT_SESSION_KEY, None)
+    if session.get(ACTIVE_ROLE_SESSION_KEY) == STUDENT_ROLE:
+        session.pop(ACTIVE_ROLE_SESSION_KEY, None)
     g.current_student = None
+
+
+def enforce_exclusive_login() -> None:
+    active_role = session.get(ACTIVE_ROLE_SESSION_KEY)
+    has_student_session = session.get(STUDENT_SESSION_KEY) is not None
+    has_admin_session = session.get("_user_id") is not None
+
+    if active_role == ADMIN_ROLE:
+        if has_student_session:
+            session.pop(STUDENT_SESSION_KEY, None)
+        g.current_student = None
+        return
+
+    if active_role == STUDENT_ROLE:
+        if has_admin_session:
+            logout_user()
+        return
+
+    if has_admin_session and has_student_session:
+        session.pop(STUDENT_SESSION_KEY, None)
+        g.current_student = None
+        session[ACTIVE_ROLE_SESSION_KEY] = ADMIN_ROLE
+    elif has_admin_session:
+        session[ACTIVE_ROLE_SESSION_KEY] = ADMIN_ROLE
+    elif has_student_session:
+        session[ACTIVE_ROLE_SESSION_KEY] = STUDENT_ROLE
 
 
 def current_student() -> StudentUser | None:

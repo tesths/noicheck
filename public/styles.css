@@ -343,6 +343,10 @@ table {
   table-layout: fixed;
 }
 
+.student-submission-table td {
+  vertical-align: middle;
+}
+
 .student-overview-table {
   min-width: 860px;
 }
