@@ -131,3 +131,33 @@ def test_create_app_does_not_create_instance_directory_on_startup(monkeypatch):
 
     app = create_app(MinimalConfig)
     assert app is not None
+
+
+def test_create_app_skips_bootstrap_for_flask_db_commands(monkeypatch):
+    calls = []
+
+    def fake_bootstrap(app):
+        calls.append(app)
+
+    monkeypatch.setattr("src.app.bootstrap_app", fake_bootstrap)
+    monkeypatch.setattr("sys.argv", ["flask", "db", "upgrade"])
+
+    class MinimalConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {}
+        WTF_CSRF_ENABLED = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-v4-pro"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = False
+
+    app = create_app(MinimalConfig)
+
+    assert app is not None
+    assert calls == []

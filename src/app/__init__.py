@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 from flask import Flask, current_app, request
@@ -40,7 +41,8 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
         return format_beijing_time(value)
 
     with app.app_context():
-        bootstrap_app(app)
+        if not _is_flask_db_command():
+            bootstrap_app(app)
 
     @app.before_request
     def _ensure_database_schema_ready() -> None:
@@ -49,3 +51,7 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
         ensure_database_schema(current_app)
 
     return app
+
+
+def _is_flask_db_command() -> bool:
+    return len(sys.argv) >= 2 and sys.argv[1].strip().lower() == "db"
