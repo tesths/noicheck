@@ -59,6 +59,37 @@ def test_admin_can_filter_submissions_by_student(app, client):
     assert response.data.count("查看详情".encode()) == 1
 
 
+def test_admin_submission_detail_back_link_preserves_student_filter(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.commit()
+        student_id = student.id
+        public_id = submission.public_id
+
+    _login_admin(client)
+    list_response = client.get(f"/admin/submissions?student_user_id={student_id}")
+    list_soup = BeautifulSoup(list_response.data, "html.parser")
+
+    assert list_response.status_code == 200
+    detail_link = next(link for link in list_soup.select("a") if link.get_text(strip=True) == "查看详情")
+    assert detail_link.get("href", "").startswith(f"/admin/submissions/{public_id}?next=")
+
+    detail_response = client.get(detail_link.get("href"))
+    detail_soup = BeautifulSoup(detail_response.data, "html.parser")
+
+    assert detail_response.status_code == 200
+    back_link = next(link for link in detail_soup.select("a") if link.get_text(strip=True) == "返回列表")
+    assert back_link.get("href") == f"/admin/submissions?student_user_id={student_id}"
+
+
 def test_admin_can_view_a_single_students_submission_history(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))

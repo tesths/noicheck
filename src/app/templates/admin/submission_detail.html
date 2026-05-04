@@ -14,6 +14,7 @@
         {% elif submission.diagnosis_status != "success" %}
           <form method="post" action="{{ url_for('admin.generate_diagnosis', public_id=submission.public_id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <input type="hidden" name="next" value="{{ return_url }}">
             <button class="primary-button" type="submit">
               {% if submission.diagnosis_status == "failed" %}重新生成 AI 诊断{% else %}生成 AI 诊断{% endif %}
             </button>
@@ -21,6 +22,7 @@
         {% endif %}
         <form method="post" action="{{ url_for('admin.delete_submission', public_id=submission.public_id) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="next" value="{{ return_url }}">
           {% if submission.student_user_id %}
             <input type="hidden" name="student_user_id" value="{{ submission.student_user_id }}">
           {% endif %}
@@ -28,7 +30,7 @@
         </form>
         <a class="ghost-button mini-button" href="{{ url_for('admin.student_list') }}">学生管理</a>
         <a class="ghost-button mini-button" href="{{ url_for('admin.settings_page') }}">系统设置</a>
-        <a class="ghost-button mini-button" href="{{ url_for('admin.submission_list') }}">返回列表</a>
+        <a class="ghost-button mini-button" href="{{ return_url }}">返回列表</a>
       </div>
     </div>
     <dl class="meta-grid">

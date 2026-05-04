@@ -1,3 +1,5 @@
+from urllib.parse import urlsplit
+
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required, logout_user
 from sqlalchemy.exc import SQLAlchemyError
@@ -50,6 +52,17 @@ def _page_url(page: int | None) -> str | None:
     return url_for(request.endpoint, **(request.view_args or {}), **params)
 
 
+def _admin_return_to_url() -> str | None:
+    raw_value = request.values.get("next", "").strip()
+    if not raw_value:
+        return None
+
+    parsed = urlsplit(raw_value)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/admin/"):
+        return None
+    return raw_value
+
+
 def _render_submission_list(*, student: StudentUser | None = None):
     selected_student_id = student.id if student else _selected_student_id()
     query = _submission_list_query()
@@ -65,6 +78,7 @@ def _render_submission_list(*, student: StudentUser | None = None):
         pagination=pagination,
         prev_page_url=_page_url(pagination.prev_page),
         next_page_url=_page_url(pagination.next_page),
+        detail_return_to=request.full_path.removesuffix("?"),
     )
 
 
@@ -92,6 +106,10 @@ def _student_redirect_response(student_id: int):
 
 
 def _delete_redirect_response():
+    return_to = _admin_return_to_url()
+    if return_to:
+        return redirect(return_to)
+
     student_id = request.form.get("student_id", "").strip()
     if student_id:
         return redirect(url_for("admin.student_submission_list", student_id=int(student_id)))
@@ -147,7 +165,11 @@ def student_submission_list(student_id: int):
 @login_required
 def submission_detail(public_id: str):
     submission = _submission_detail_query(public_id).first_or_404()
-    return render_template("admin/submission_detail.html", submission=submission)
+    return render_template(
+        "admin/submission_detail.html",
+        submission=submission,
+        return_url=_admin_return_to_url() or url_for("admin.submission_list"),
+    )
 
 
 @admin_bp.get("/settings")
@@ -160,6 +182,7 @@ def settings_page():
 @login_required
 def generate_diagnosis(public_id: str):
     submission = _submission_detail_query(public_id).first_or_404()
+    return_to = _admin_return_to_url()
     try:
         enqueue_diagnosis_job(submission, requested_by="admin")
         flash("后台任务已入队，请刷新详情查看结果。", "success")
@@ -170,7 +193,10 @@ def generate_diagnosis(public_id: str):
         db.session.rollback()
         flash("提交后台任务失败，请稍后再试。", "error")
 
-    return redirect(url_for("admin.submission_detail", public_id=public_id))
+    detail_url = url_for("admin.submission_detail", public_id=public_id)
+    if return_to:
+        detail_url = url_for("admin.submission_detail", public_id=public_id, next=return_to)
+    return redirect(detail_url)
 
 
 @admin_bp.post("/submissions/<public_id>/delete")

@@ -68,7 +68,7 @@
                     <span class="status status-{{ submission.diagnosis_status }}">老师诊断 {{ submission.diagnosis_status_label }}</span>
                   </div>
                   <div class="row-actions submission-ops-line">
-                    <a class="ghost-button mini-button" href="{{ url_for('admin.submission_detail', public_id=submission.public_id) }}">查看详情</a>
+                    <a class="ghost-button mini-button" href="{{ url_for('admin.submission_detail', public_id=submission.public_id, next=detail_return_to) }}">查看详情</a>
                     <form method="post" action="{{ url_for('admin.delete_submission', public_id=submission.public_id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                       {% if student_page %}
