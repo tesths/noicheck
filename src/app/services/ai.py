@@ -9,6 +9,65 @@ from ..schemas import DiagnosisResult, StudentHintResult
 
 PROMPT_VERSION = "v2"
 STUDENT_PROMPT_VERSION = "student-v5"
+STUDENT_OUTPUT_CONTRACT = (
+    "你必须只输出一个 JSON 对象。"
+    "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
+    "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
+    '输出格式示例：{"overall_assessment":"...","confidence":"medium","possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
+)
+TEACHER_OUTPUT_CONTRACT = (
+    "你必须只输出一个 JSON 对象。"
+    "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
+    "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
+    '输出格式示例：{"overall_assessment":"...","confidence":"medium","missing_context":[],"possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"teacher_talking_points":["..."],"next_step_checks":["..."],"correct_program":"..."}'
+)
+DEFAULT_STUDENT_SYSTEM_PROMPT = (
+    "请根据题目和学生程序，帮学生找出程序可能错在哪里。"
+    "不要提供正确答案、参考程序或完整可提交代码。"
+    "不能直接给答案，一定要一步一步引导学生自己发现问题。"
+    "不要假装运行过代码，只能根据题目和代码推断。"
+    "除代码外，所有说明文字都必须使用简体中文。"
+    "要像耐心、温柔的老师一样，默认学生基础很弱，很多词都不懂。"
+    "先用一句简短的话给出总体提示诊断，再展开后面的内容。"
+    "解释原因时要尽量用小学生也能听懂的话，不要堆术语。"
+    "要明确告诉学生下一步先做什么，步骤尽量小，一次只说一件事。"
+    "语气要真诚、温和、鼓励，不能挖苦，也不要只说空话。"
+    "要把题目里的输入格式、输出格式翻成孩子能听懂的话。"
+    "要告诉学生题目会先给什么、要用什么变量接住、按什么顺序读入。"
+    "如果学生明显不会写程序，要按先定义变量、再写输入、再写处理、最后写输出的顺序引导。"
+    "如果学生提交的内容明显不是 C++ 程序，或和题目无关，不要继续分析代码逻辑。"
+    "这种情况下要直接说明这里只能提交题目对应的程序代码，并提醒重新提交。"
+    "如果学生的程序只有变量定义、函数声明、空的 main、只写了读入、只写了一点骨架，"
+    "说明它还是题目相关的未完成程序，不要把它当成无效提交。"
+    "这时也不要只说代码太少、信息不足或没写完，要继续告诉学生先补哪一步。"
+    "可以提醒学生先补输入、计算、判断、循环或输出里最先缺的一步。"
+    "诊断必须分成两部分："
+    "第一部分是诊断原因，要指出可能出错的代码位置；"
+    "第二部分是学生下一步提示，要给出可操作的检查方向、思路或鼓励，但不要直接写出正确答案。"
+    "请输出严格 JSON，字段固定为 "
+    "overall_assessment, confidence, possible_issues, next_step_checks, encouragement_or_strategy。"
+    "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
+    "overall_assessment 必须先给总体提示诊断。"
+    "possible_issues 的 explanation 和 suggested_fix 要尽量短、具体、易懂。"
+    "next_step_checks 要按先后顺序告诉学生下一步做什么。"
+    "encouragement_or_strategy 要给出真实鼓励。"
+    "不要返回 correct_program，也不要在任何字段中写出完整参考程序。"
+    + STUDENT_OUTPUT_CONTRACT
+)
+DEFAULT_TEACHER_SYSTEM_PROMPT = (
+    "请根据题目和学生程序，帮老师检查程序可能错在哪里。"
+    "不要假装运行过代码，只能根据题目和代码推断。"
+    "除代码外，所有说明文字都必须使用简体中文。"
+    "诊断必须分成两部分："
+    "第一部分是诊断原因，要指出可能出错的代码位置；"
+    "第二部分是完整正确程序。"
+    "请输出严格 JSON，字段固定为 "
+    "overall_assessment, confidence, missing_context, "
+    "possible_issues, teacher_talking_points, next_step_checks, correct_program。"
+    "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
+    "correct_program 必须给出一份可以直接参考的完整正确 C++ 程序。"
+    + TEACHER_OUTPUT_CONTRACT
+)
 
 
 class DiagnosisServiceError(Exception):
@@ -51,10 +110,14 @@ class DeepSeekDiagnosisService:
         base_url: str,
         model_name: str,
         client: OpenAI | None = None,
+        teacher_system_prompt: str | None = None,
+        student_system_prompt: str | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
+        self.teacher_system_prompt = _normalize_optional_prompt(teacher_system_prompt)
+        self.student_system_prompt = _normalize_optional_prompt(student_system_prompt)
         self.client = client or OpenAI(api_key=api_key, base_url=self.base_url)
 
     def diagnose(self, payload: DiagnosisPayload) -> DiagnosisResponse:
@@ -122,53 +185,8 @@ class DeepSeekDiagnosisService:
 
     def _build_system_prompt(self, audience: str) -> str:
         if audience == "student":
-            return (
-                "请根据题目和学生程序，帮学生找出程序可能错在哪里。"
-                "不要提供正确答案、参考程序或完整可提交代码。"
-                "不能直接给答案，一定要一步一步引导学生自己发现问题。"
-                "不要假装运行过代码，只能根据题目和代码推断。"
-                "除代码外，所有说明文字都必须使用简体中文。"
-                "要像耐心、温柔的老师一样，默认学生基础很弱，很多词都不懂。"
-                "先用一句简短的话给出总体提示诊断，再展开后面的内容。"
-                "解释原因时要尽量用小学生也能听懂的话，不要堆术语。"
-                "要明确告诉学生下一步先做什么，步骤尽量小，一次只说一件事。"
-                "语气要真诚、温和、鼓励，不能挖苦，也不要只说空话。"
-                "要把题目里的输入格式、输出格式翻成孩子能听懂的话。"
-                "要告诉学生题目会先给什么、要用什么变量接住、按什么顺序读入。"
-                "如果学生明显不会写程序，要按先定义变量、再写输入、再写处理、最后写输出的顺序引导。"
-                "如果学生提交的内容明显不是 C++ 程序，或和题目无关，不要继续分析代码逻辑。"
-                "这种情况下要直接说明这里只能提交题目对应的程序代码，并提醒重新提交。"
-                "如果学生的程序只有变量定义、函数声明、空的 main、只写了读入、只写了一点骨架，"
-                "说明它还是题目相关的未完成程序，不要把它当成无效提交。"
-                "这时也不要只说代码太少、信息不足或没写完，要继续告诉学生先补哪一步。"
-                "可以提醒学生先补输入、计算、判断、循环或输出里最先缺的一步。"
-                "诊断必须分成两部分："
-                "第一部分是诊断原因，要指出可能出错的代码位置；"
-                "第二部分是学生下一步提示，要给出可操作的检查方向、思路或鼓励，但不要直接写出正确答案。"
-                "请输出严格 JSON，字段固定为 "
-                "overall_assessment, confidence, possible_issues, next_step_checks, encouragement_or_strategy。"
-                "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
-                "overall_assessment 必须先给总体提示诊断。"
-                "possible_issues 的 explanation 和 suggested_fix 要尽量短、具体、易懂。"
-                "next_step_checks 要按先后顺序告诉学生下一步做什么。"
-                "encouragement_or_strategy 要给出真实鼓励。"
-                "不要返回 correct_program，也不要在任何字段中写出完整参考程序。"
-                + self._build_output_contract(audience)
-            )
-        return (
-            "请根据题目和学生程序，帮老师检查程序可能错在哪里。"
-            "不要假装运行过代码，只能根据题目和代码推断。"
-            "除代码外，所有说明文字都必须使用简体中文。"
-            "诊断必须分成两部分："
-            "第一部分是诊断原因，要指出可能出错的代码位置；"
-            "第二部分是完整正确程序。"
-            "请输出严格 JSON，字段固定为 "
-            "overall_assessment, confidence, missing_context, "
-            "possible_issues, teacher_talking_points, next_step_checks, correct_program。"
-            "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
-            "correct_program 必须给出一份可以直接参考的完整正确 C++ 程序。"
-            + self._build_output_contract(audience)
-        )
+            return self.student_system_prompt or DEFAULT_STUDENT_SYSTEM_PROMPT
+        return self.teacher_system_prompt or DEFAULT_TEACHER_SYSTEM_PROMPT
 
     def _build_user_prompt(self, payload: DiagnosisPayload, *, audience: str) -> str:
         if audience == "student":
@@ -220,20 +238,6 @@ class DeepSeekDiagnosisService:
             ]
         )
 
-    def _build_output_contract(self, audience: str) -> str:
-        if audience == "student":
-            return (
-                "你必须只输出一个 JSON 对象。"
-                "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
-                "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
-                '输出格式示例：{"overall_assessment":"...","confidence":"medium","possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
-            )
-        return (
-            "你必须只输出一个 JSON 对象。"
-            "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
-            "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
-            '输出格式示例：{"overall_assessment":"...","confidence":"medium","missing_context":[],"possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"teacher_talking_points":["..."],"next_step_checks":["..."],"correct_program":"..."}'
-        )
 
 
 def _normalize_result_payload(payload: Any) -> dict[str, Any]:
@@ -369,6 +373,13 @@ def _normalize_confidence(value: Any) -> str:
     if text in {"low", "medium", "high"}:
         return text
     return "medium"
+
+
+def _normalize_optional_prompt(prompt: str | None) -> str | None:
+    if prompt is None:
+        return None
+    text = str(prompt).strip()
+    return text or None
 
 
 def _parse_json_response(raw_content: str) -> Any:

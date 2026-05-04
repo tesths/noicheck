@@ -8,7 +8,14 @@ from ..services.auth import authenticate_admin, ensure_student_user, hash_passwo
 from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job
 from ..services.pagination import paginate_query, normalize_page
-from ..services.settings import ALLOWED_AI_MODELS, get_active_ai_model, set_active_ai_model
+from ..services.settings import (
+    ALLOWED_AI_MODELS,
+    get_active_ai_model,
+    get_student_system_prompt,
+    get_teacher_system_prompt,
+    set_ai_prompts,
+    set_active_ai_model,
+)
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -63,6 +70,19 @@ def _render_submission_list(*, student: StudentUser | None = None):
 
 def _submission_detail_query(public_id: str):
     return Submission.query.filter_by(public_id=public_id, deleted_at=None)
+
+
+def _settings_page_context(
+    *,
+    teacher_system_prompt: str | None = None,
+    student_system_prompt: str | None = None,
+) -> dict[str, object]:
+    return {
+        "active_ai_model": get_active_ai_model(),
+        "allowed_ai_models": ALLOWED_AI_MODELS,
+        "teacher_system_prompt": teacher_system_prompt or get_teacher_system_prompt(),
+        "student_system_prompt": student_system_prompt or get_student_system_prompt(),
+    }
 
 
 def _student_redirect_response(student_id: int):
@@ -133,11 +153,7 @@ def submission_detail(public_id: str):
 @admin_bp.get("/settings")
 @login_required
 def settings_page():
-    return render_template(
-        "admin/settings.html",
-        active_ai_model=get_active_ai_model(),
-        allowed_ai_models=ALLOWED_AI_MODELS,
-    )
+    return render_template("admin/settings.html", **_settings_page_context())
 
 
 @admin_bp.post("/submissions/<public_id>/diagnose")
@@ -186,6 +202,50 @@ def update_ai_model():
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存模型设置失败，请稍后再试。", "error")
+    return redirect(url_for("admin.settings_page"))
+
+
+@admin_bp.post("/settings/prompts")
+@login_required
+def update_ai_prompts():
+    teacher_system_prompt = request.form.get("teacher_system_prompt", "").strip()
+    student_system_prompt = request.form.get("student_system_prompt", "").strip()
+    if not teacher_system_prompt or not student_system_prompt:
+        flash("请填写老师和学生的系统提示词。", "error")
+        return (
+            render_template(
+                "admin/settings.html",
+                **_settings_page_context(
+                    teacher_system_prompt=teacher_system_prompt,
+                    student_system_prompt=student_system_prompt,
+                ),
+            ),
+            400,
+        )
+
+    try:
+        set_ai_prompts(
+            teacher_system_prompt=teacher_system_prompt,
+            student_system_prompt=student_system_prompt,
+        )
+        db.session.commit()
+        flash("老师和学生的系统提示词已更新。", "success")
+    except ValueError:
+        db.session.rollback()
+        flash("请填写老师和学生的系统提示词。", "error")
+        return (
+            render_template(
+                "admin/settings.html",
+                **_settings_page_context(
+                    teacher_system_prompt=teacher_system_prompt,
+                    student_system_prompt=student_system_prompt,
+                ),
+            ),
+            400,
+        )
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("保存系统提示词失败，请稍后再试。", "error")
     return redirect(url_for("admin.settings_page"))
 
 

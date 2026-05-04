@@ -15,7 +15,7 @@ from .ai import (
 )
 from .job_queue import JobMessage, JobQueueError, enqueue_job
 from .problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError
-from .settings import get_active_ai_model
+from .settings import get_active_ai_model, get_student_system_prompt, get_teacher_system_prompt
 
 FETCH_PROBLEM_JOB = "fetch-problem"
 DIAGNOSE_SUBMISSION_JOB = "diagnose-submission"
@@ -172,6 +172,8 @@ def process_diagnosis_job(submission_public_id: str, *, fetch_before_diagnosis: 
         api_key=ai_config["api_key"],
         base_url=ai_config["base_url"],
         model_name=ai_config["model_name"],
+        teacher_system_prompt=get_teacher_system_prompt(),
+        student_system_prompt=get_student_system_prompt(),
     )
 
     snapshot = submission.problem_snapshot
@@ -279,6 +281,8 @@ def process_student_hint_job(submission_public_id: str, *, fetch_before_diagnosi
         api_key=ai_config["api_key"],
         base_url=ai_config["base_url"],
         model_name=ai_config["model_name"],
+        teacher_system_prompt=get_teacher_system_prompt(),
+        student_system_prompt=get_student_system_prompt(),
     )
 
     snapshot = submission.problem_snapshot

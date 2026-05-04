@@ -33,5 +33,22 @@
     </label>
     <button class="primary-button" type="submit">保存设置</button>
   </form>
+
+  <form class="form-panel" method="post" action="{{ url_for('admin.update_ai_prompts') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="hero-copy compact-copy">
+      <p class="eyebrow">AI 提示词</p>
+      <p>这里只配置老师和学生传给 DeepSeek 的系统提示词，题目、输入输出和代码仍由系统自动拼接。</p>
+    </div>
+    <label class="field">
+      <span>老师系统提示词</span>
+      <textarea name="teacher_system_prompt" rows="12" required>{{ teacher_system_prompt }}</textarea>
+    </label>
+    <label class="field">
+      <span>学生系统提示词</span>
+      <textarea name="student_system_prompt" rows="14" required>{{ student_system_prompt }}</textarea>
+    </label>
+    <button class="primary-button" type="submit">保存提示词</button>
+  </form>
 </section>
 {% endblock %}

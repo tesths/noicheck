@@ -78,6 +78,35 @@ def test_deepseek_service_uses_simple_chat_completion():
     assert result.result.possible_issues[0].title == "条件判断遗漏"
 
 
+def test_deepseek_service_uses_custom_teacher_system_prompt():
+    client = FakeClient()
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+        teacher_system_prompt="老师自定义系统提示",
+    )
+
+    service.diagnose(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            description_text="输入一行字符，统计其中数字字符的个数。",
+            input_text="一行字符串。",
+            output_text="输出数字字符个数。",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    call = client.chat.completions.calls[0]
+    assert call["messages"][0]["content"] == "老师自定义系统提示"
+    assert "题目描述" in call["messages"][1]["content"]
+
+
 def test_deepseek_service_accepts_loose_chinese_json_shape():
     client = FakeClient()
     client.chat.completions.create = lambda **kwargs: SimpleNamespace(
