@@ -26,6 +26,7 @@
 - [已完成] 2026-05-04 把老师版和学生版 DeepSeek 系统提示词迁移到教师后台系统设置，可由老师统一调整
 - [已完成] 2026-05-04 新增 GitHub Actions 生产数据库迁移流程，适配 Vercel 通过 GitHub 自动部署的方式
 - [已完成] 2026-05-04 修复 GitHub Actions 生产迁移 workflow 缺少 `uv.lock` 导致 `uv sync --frozen` 失败
+- [已完成] 2026-05-04 修复生产数据库首次接入 Alembic 时因缺少 `alembic_version` 而重复建表失败的问题
 
 ## 待办
 

@@ -16,6 +16,9 @@ export REQUIRE_PRODUCTION_ENV=false
 echo "== Alembic heads =="
 uv run flask db heads
 
+echo "== Preparing legacy migration state =="
+uv run python scripts/prepare-legacy-migration-state.py
+
 echo "== Current revision (before) =="
 uv run flask db current || true
 
