@@ -75,6 +75,7 @@
 - 线上部署：Postgres
 
 生产环境仍然要求使用公网 Postgres。
+生产数据库迁移支持通过 GitHub Actions 自动执行，适配 Vercel 直接连接 GitHub 仓库的部署方式。
 
 ## 4. 当前业务流程
 
