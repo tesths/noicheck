@@ -389,3 +389,23 @@ def toggle_student_active(student_id: int):
     db.session.commit()
     flash(f"学生 {student.nickname} 已{'启用' if student.is_active else '停用'}。", "success")
     return _student_redirect_response(student_id)
+
+
+@admin_bp.post("/students/<int:student_id>/delete")
+@login_required
+def delete_student(student_id: int):
+    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    for submission in list(student.submissions):
+        if submission.deleted_at is None:
+            submission.mark_deleted()
+        submission.student_user = None
+
+    try:
+        db.session.delete(student)
+        db.session.commit()
+        flash("学生账号已删除，关联提交已隐藏。", "success")
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("删除学生失败，请稍后再试。", "error")
+        return redirect(url_for("admin.student_detail", student_id=student_id))
+    return redirect(url_for("admin.student_list"))

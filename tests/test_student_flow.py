@@ -159,6 +159,56 @@ def test_admin_can_update_student_real_name(app, client):
         assert student.real_name == "张老师"
 
 
+def test_admin_can_delete_student_and_hide_related_submissions(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        db.session.add_all([admin, student, submission])
+        db.session.commit()
+        student_id = student.id
+        public_id = submission.public_id
+
+    _login_admin(client)
+    delete_response = client.post(
+        f"/admin/students/{student_id}/delete",
+        data={},
+        follow_redirects=False,
+    )
+
+    assert delete_response.status_code == 302
+    assert delete_response.headers["Location"].endswith("/admin/students")
+
+    with app.app_context():
+        assert StudentUser.query.filter_by(id=student_id).first() is None
+        hidden_submission = Submission.query.filter_by(public_id=public_id).one()
+        assert hidden_submission.student_user_id is None
+        assert hidden_submission.deleted_at is not None
+
+    student_list_response = client.get("/admin/students")
+    admin_submission_list_response = client.get("/admin/submissions")
+    assert student_list_response.status_code == 200
+    assert "张小明".encode() not in student_list_response.data
+    assert admin_submission_list_response.status_code == 200
+    assert public_id.encode() not in admin_submission_list_response.data
+
+    relogin_response = client.post(
+        "/student/login",
+        data={"nickname": "stu01", "password": "pw-1"},
+        follow_redirects=False,
+    )
+    assert relogin_response.status_code == 401
+
+
 def test_student_management_actions_use_unified_button_style(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
