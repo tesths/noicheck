@@ -89,6 +89,7 @@ def _repair_legacy_schema(app: Flask) -> None:
     column_definitions = {
         "student_name": "VARCHAR(80)",
         "student_user_id": "INTEGER",
+        "request_token": "VARCHAR(64)",
         "problem_url": "VARCHAR(500)",
         "public_id": "VARCHAR(32)",
         "problem_source": "VARCHAR(32)",
@@ -178,6 +179,9 @@ def _repair_legacy_schema(app: Flask) -> None:
         )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_submissions_student_user_id ON submissions (student_user_id)")
+        )
+        connection.execute(
+            text("CREATE UNIQUE INDEX IF NOT EXISTS ix_submissions_request_token ON submissions (request_token)")
         )
         connection.execute(
             text("CREATE INDEX IF NOT EXISTS ix_submissions_deleted_at ON submissions (deleted_at)")

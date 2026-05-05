@@ -33,6 +33,7 @@ class Submission(db.Model):
     public_id = db.Column(db.String(32), nullable=False, unique=True, index=True, default=_generate_public_id)
     student_name = db.Column(db.String(80), nullable=False)
     student_user_id = db.Column(db.Integer, db.ForeignKey("student_users.id"), nullable=True, index=True)
+    request_token = db.Column(db.String(64), nullable=True, unique=True, index=True)
     problem_url = db.Column(db.String(500), nullable=False)
     problem_source = db.Column(db.String(32), nullable=False, default="openjudge")
     problem_title = db.Column(db.String(255), nullable=True)

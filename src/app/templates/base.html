@@ -47,5 +47,33 @@
 
       {% block content %}{% endblock %}
     </main>
+
+    <script>
+      document.addEventListener("submit", function (event) {
+        const form = event.target;
+        if (!(form instanceof HTMLFormElement) || !form.hasAttribute("data-prevent-double-submit")) {
+          return;
+        }
+
+        if (form.dataset.submitting === "true") {
+          event.preventDefault();
+          return;
+        }
+
+        form.dataset.submitting = "true";
+        const submitButtons = form.querySelectorAll('button[type="submit"], input[type="submit"]');
+        submitButtons.forEach((button) => {
+          const submittingText = button.dataset.submittingText;
+          if (submittingText) {
+            if (button.tagName === "INPUT") {
+              button.value = submittingText;
+            } else {
+              button.textContent = submittingText;
+            }
+          }
+          button.disabled = true;
+        });
+      });
+    </script>
   </body>
 </html>

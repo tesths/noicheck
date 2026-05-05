@@ -30,6 +30,12 @@ def _student_detail_csrf_token(client, public_id: str) -> str:
     return BeautifulSoup(page.data, "html.parser").select_one("input[name=csrf_token]")["value"]
 
 
+def _submission_request_token(client, path: str) -> str:
+    page = client.get(path)
+    assert page.status_code == 200
+    return BeautifulSoup(page.data, "html.parser").select_one("input[name=request_token]")["value"]
+
+
 def test_student_pages_require_login(client):
     response = client.get("/student/submissions", follow_redirects=False)
 
@@ -374,9 +380,11 @@ def test_student_self_check_submission_queues_student_hint_job(app, client, monk
         db.session.commit()
 
     _login_student(client, "小明", "pass-123")
+    request_token = _submission_request_token(client, "/student/submissions/new/self-check")
     response = client.post(
         "/student/submissions/new/self-check",
         data={
+            "request_token": request_token,
             "problem_url": "http://noi.openjudge.cn/ch0107/01/",
             "code_text": "#include <iostream>\nint main() { return 0; }",
         },
@@ -417,9 +425,11 @@ def test_student_teacher_review_submission_queues_teacher_diagnosis_job(app, cli
         db.session.commit()
 
     _login_student(client, "小红", "pass-456")
+    request_token = _submission_request_token(client, "/student/submissions/new/teacher-review")
     response = client.post(
         "/student/submissions/new/teacher-review",
         data={
+            "request_token": request_token,
             "problem_url": "http://noi.openjudge.cn/ch0107/02/",
             "code_text": "#include <iostream>\nint main() { return 0; }",
         },
@@ -443,6 +453,78 @@ def test_student_teacher_review_submission_queues_teacher_diagnosis_job(app, cli
             {
                 "job_type": "fetch-and-diagnose",
                 "submission_public_id": submission.public_id,
+                "requested_by": "student",
+            }
+        ]
+
+
+def test_student_self_check_duplicate_post_only_creates_one_submission(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="小明", password_hash=hash_password("pass-123"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "小明", "pass-123")
+    request_token = _submission_request_token(client, "/student/submissions/new/self-check")
+    form_data = {
+        "request_token": request_token,
+        "problem_url": "http://noi.openjudge.cn/ch0107/01/",
+        "code_text": "#include <iostream>\nint main() { return 0; }",
+    }
+
+    first_response = client.post("/student/submissions/new/self-check", data=form_data, follow_redirects=False)
+    second_response = client.post("/student/submissions/new/self-check", data=form_data, follow_redirects=False)
+
+    assert first_response.status_code == 302
+    assert second_response.status_code == 302
+    assert first_response.headers["Location"] == second_response.headers["Location"]
+
+    with app.app_context():
+        submissions = Submission.query.all()
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert len(submissions) == 1
+        assert submissions[0].submission_mode == "self_check"
+        assert jobs == [
+            {
+                "job_type": "fetch-and-student-diagnose",
+                "submission_public_id": submissions[0].public_id,
+                "requested_by": "student",
+            }
+        ]
+
+
+def test_student_teacher_review_duplicate_post_only_creates_one_submission(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="小红", password_hash=hash_password("pass-456"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "小红", "pass-456")
+    request_token = _submission_request_token(client, "/student/submissions/new/teacher-review")
+    form_data = {
+        "request_token": request_token,
+        "problem_url": "http://noi.openjudge.cn/ch0107/02/",
+        "code_text": "#include <iostream>\nint main() { return 0; }",
+    }
+
+    first_response = client.post("/student/submissions/new/teacher-review", data=form_data, follow_redirects=False)
+    second_response = client.post("/student/submissions/new/teacher-review", data=form_data, follow_redirects=False)
+
+    assert first_response.status_code == 302
+    assert second_response.status_code == 302
+    assert first_response.headers["Location"] == second_response.headers["Location"]
+
+    with app.app_context():
+        submissions = Submission.query.all()
+        jobs = app.extensions["job_queue_stub"]["jobs"]
+
+        assert len(submissions) == 1
+        assert submissions[0].submission_mode == "teacher_review"
+        assert jobs == [
+            {
+                "job_type": "fetch-and-diagnose",
+                "submission_public_id": submissions[0].public_id,
                 "requested_by": "student",
             }
         ]

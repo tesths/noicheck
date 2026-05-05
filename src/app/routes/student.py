@@ -1,5 +1,7 @@
+import secrets
+
 from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..extensions import db
 from ..models import Submission
@@ -50,6 +52,7 @@ def _build_submission(
     problem_url: str,
     code_text: str,
     *,
+    request_token: str,
     submission_mode: str,
 ):
     return Submission(
@@ -58,6 +61,7 @@ def _build_submission(
         problem_url=problem_url,
         code_text=code_text,
         language="cpp",
+        request_token=request_token,
         submission_mode=submission_mode,
         fetch_status="pending",
         student_hint_status="pending",
@@ -73,34 +77,67 @@ def _mode_copy(submission_mode: str) -> dict[str, str]:
             "title": "提交给自己检查",
             "description": "系统会先抓题，再生成只给提示、不直接给答案的学生版 AI 引导。",
             "submit_label": "提交并获取 AI 提示",
+            "submitting_label": "提交中，请稍候…",
         }
     return {
         "eyebrow": "学生端 · 提交给老师",
         "title": "提交给老师查看",
         "description": "系统会自动生成老师版完整诊断，包含修改建议和正确程序，但这些内容只在老师端可见。",
         "submit_label": "提交给老师",
+        "submitting_label": "提交中，请稍候…",
     }
 
 
+def _new_request_token() -> str:
+    return secrets.token_urlsafe(18)
+
+
 def _render_submission_form(*, student, submission_mode: str, form_data=None, status_code: int = 200):
+    request_token = ""
+    if form_data is not None:
+        request_token = str(form_data.get("request_token", "")).strip()
+    if not request_token:
+        request_token = _new_request_token()
+
     rendered = render_template(
         "student/submission_form.html",
         student=student,
         submission_mode=submission_mode,
         form_data=form_data,
         mode_copy=_mode_copy(submission_mode),
+        request_token=request_token,
     )
     if status_code == 200:
         return rendered
     return rendered, status_code
 
 
+def _existing_submission_for_request(*, student_id: int, request_token: str) -> Submission | None:
+    if not request_token:
+        return None
+    return Submission.query.filter_by(
+        student_user_id=student_id,
+        request_token=request_token,
+        deleted_at=None,
+    ).first()
+
+
 def _create_student_submission(*, submission_mode: str):
     student = current_student()
     form_data = {
+        "request_token": request.form.get("request_token", "").strip(),
         "problem_url": request.form.get("problem_url", "").strip(),
         "code_text": request.form.get("code_text", "").strip(),
     }
+    if not form_data["request_token"]:
+        flash("提交页面已过期，请刷新后再试。", "error")
+        return _render_submission_form(
+            student=student,
+            submission_mode=submission_mode,
+            form_data=form_data,
+            status_code=400,
+        )
+
     errors = _validate_submission_form(form_data["problem_url"], form_data["code_text"])
     if errors:
         for error in errors:
@@ -128,11 +165,28 @@ def _create_student_submission(*, submission_mode: str):
         student_name=student.nickname,
         problem_url=normalized_problem_url,
         code_text=form_data["code_text"],
+        request_token=form_data["request_token"],
         submission_mode=submission_mode,
     )
     try:
         db.session.add(submission)
         db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        existing_submission = _existing_submission_for_request(
+            student_id=student.id,
+            request_token=form_data["request_token"],
+        )
+        if existing_submission is not None:
+            flash("请勿重复提交，已打开你刚才那条记录。", "info")
+            return redirect(url_for("student.submission_detail", public_id=existing_submission.public_id))
+        flash("保存提交记录时失败，请稍后再试。", "error")
+        return _render_submission_form(
+            student=student,
+            submission_mode=submission_mode,
+            form_data=form_data,
+            status_code=500,
+        )
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存提交记录时失败，请稍后再试。", "error")

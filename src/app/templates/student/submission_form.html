@@ -7,8 +7,9 @@
     <h1>{{ mode_copy.title }}</h1>
     <p>{{ mode_copy.description }}</p>
   </div>
-  <form class="panel form-panel" method="post">
+  <form class="panel form-panel" method="post" data-prevent-double-submit>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="request_token" value="{{ request_token }}">
     <label class="field">
       <span>当前学生</span>
       <input type="text" value="{{ student.nickname }}" disabled>
@@ -22,7 +23,7 @@
       <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
     </label>
     <div class="panel-actions">
-      <button class="primary-button" type="submit">{{ mode_copy.submit_label }}</button>
+      <button class="primary-button" type="submit" data-submitting-text="{{ mode_copy.submitting_label }}">{{ mode_copy.submit_label }}</button>
       <a class="text-link" href="{{ url_for('student.submission_new') }}">返回选择</a>
     </div>
   </form>
