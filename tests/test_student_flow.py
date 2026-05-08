@@ -901,6 +901,8 @@ def test_student_can_submit_followup_and_persist_messages(app, client, monkeypat
     assert response.status_code == 200
     assert "为什么会漏掉最后一个字符".encode() in response.data
     assert "最后一个字符有没有进入判断".encode() in response.data
+    assert 'data-followup-open="true"'.encode() in response.data
+    assert 'data-followup-toggle'.encode() in response.data
 
     with app.app_context():
         session = SubmissionFollowupSession.query.one()
@@ -961,6 +963,80 @@ def test_admin_detail_shows_student_followup_history(app, client):
     assert "学生追问记录".encode() in detail_response.data
     assert "为什么这里会少算一次".encode() in detail_response.data
     assert "最后一个字符有没有进入循环".encode() in detail_response.data
+
+
+def test_admin_student_view_uses_readonly_followup_drawer(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/04/",
+            code_text="int main() { return 0; }",
+            problem_title="04:字符统计",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="success",
+        )
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/04/",
+            title="04:字符统计",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+        )
+        session = SubmissionFollowupSession(submission=submission)
+        db.session.add_all([admin, student, submission, snapshot, session])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v5",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.add_all(
+            [
+                SubmissionFollowupMessage(
+                    session=session,
+                    role="student",
+                    content="为什么这里会少算一次？",
+                ),
+                SubmissionFollowupMessage(
+                    session=session,
+                    role="assistant",
+                    content="你先看最后一个字符有没有进入循环。",
+                    model_name="deepseek-v4-pro",
+                    latency_ms=50,
+                ),
+            ]
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_admin(client)
+    response = client.get(f"/admin/submissions/{public_id}/student-view")
+
+    assert response.status_code == 200
+    assert "追问记录".encode() in response.data
+    assert "data-followup-toggle".encode() in response.data
+    assert 'data-followup-open="false"'.encode() in response.data
+    assert 'id="followup-form"'.encode() not in response.data
 
 
 def test_student_followup_streams_sse_for_chat_ui(app, client, monkeypatch):
@@ -1208,3 +1284,5 @@ def test_student_detail_styles_followup_history_as_scrollable_chat(client):
     assert ".followup-thread-shell {" in css
     assert "overflow-y: auto;" in css
     assert "max-height:" in css
+    assert ".followup-drawer-frame {" in css
+    assert ".detail-layout-with-followup.is-followup-open" in css

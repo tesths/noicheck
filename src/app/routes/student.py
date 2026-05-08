@@ -158,6 +158,7 @@ def _render_submission_detail(
     student,
     submission: Submission,
     followup_form_data=None,
+    followup_drawer_open: bool | None = None,
     status_code: int = 200,
 ):
     rendered = render_template(
@@ -165,10 +166,17 @@ def _render_submission_detail(
         student=student,
         submission=submission,
         followup_form_data=followup_form_data,
+        followup_drawer_open=_followup_drawer_open_value(followup_drawer_open),
     )
     if status_code == 200:
         return rendered
     return rendered, status_code
+
+
+def _followup_drawer_open_value(explicit_value: bool | None = None) -> bool:
+    if explicit_value is not None:
+        return explicit_value
+    return request.args.get("followup", "").strip().lower() == "open"
 
 
 def _wants_stream_response() -> bool:
@@ -372,7 +380,11 @@ def submission_new_teacher_review():
 def submission_detail(public_id: str):
     student = current_student()
     submission = _student_submission_detail_query(student_id=student.id, public_id=public_id).first_or_404()
-    return _render_submission_detail(student=student, submission=submission)
+    return _render_submission_detail(
+        student=student,
+        submission=submission,
+        followup_drawer_open=_followup_drawer_open_value(),
+    )
 
 
 @student_bp.post("/submissions/<public_id>/follow-ups")
@@ -402,6 +414,7 @@ def submission_followup(public_id: str):
             student=student,
             submission=submission,
             followup_form_data=form_data,
+            followup_drawer_open=True,
             status_code=400,
         )
 
@@ -524,6 +537,7 @@ def submission_followup(public_id: str):
             student=student,
             submission=submission,
             followup_form_data=form_data,
+            followup_drawer_open=True,
             status_code=400,
         )
     except SQLAlchemyError:
@@ -536,6 +550,7 @@ def submission_followup(public_id: str):
             student=student,
             submission=submission,
             followup_form_data=form_data,
+            followup_drawer_open=True,
             status_code=500,
         )
     except DiagnosisServiceError as exc:
@@ -548,6 +563,7 @@ def submission_followup(public_id: str):
             student=student,
             submission=submission,
             followup_form_data=form_data,
+            followup_drawer_open=True,
             status_code=502,
         )
 
@@ -562,4 +578,4 @@ def submission_followup(public_id: str):
             }
         )
 
-    return redirect(f"{url_for('student.submission_detail', public_id=public_id)}#followup-sidebar")
+    return redirect(f"{url_for('student.submission_detail', public_id=public_id, followup='open')}#followup-drawer")

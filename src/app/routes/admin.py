@@ -24,6 +24,7 @@ from ..services.settings import (
     set_ai_prompts,
     set_active_ai_model,
 )
+from .student import _followup_drawer_open_value
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
@@ -190,6 +191,7 @@ def submission_student_view(public_id: str):
         student=submission.student_user,
         submission=submission,
         viewer_mode="admin_preview",
+        followup_drawer_open=_followup_drawer_open_value(),
         return_url=_admin_return_to_url() or url_for("admin.submission_list"),
     )
 

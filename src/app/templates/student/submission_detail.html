@@ -3,230 +3,314 @@
 {% block content %}
 {% set is_admin_preview = viewer_mode == "admin_preview" %}
 {% set followup_session = submission.followup_session %}
-{% set followup_enabled = submission.submission_mode == "self_check" and submission.latest_student_hint_run and submission.latest_student_hint_run.status == "success" %}
-<section class="detail-grid">
-  <article class="panel detail-hero">
-    <div class="panel-header">
-      <div>
-        <p class="eyebrow">{% if is_admin_preview %}学生端预览{% else %}学生端{% endif %}</p>
-        <h1>{{ submission.problem_title or submission.problem_url }}</h1>
-      </div>
-      <div class="panel-actions">
-        {% if not is_admin_preview %}
-          <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
-        {% endif %}
-        <a class="text-link" href="{{ return_url or url_for('student.submissions') }}">{% if is_admin_preview %}返回后台{% else %}返回列表{% endif %}</a>
-      </div>
-    </div>
-    <dl class="meta-grid">
-      <div>
-        <dt>提交方式</dt>
-        <dd>{{ submission.submission_mode_label }}</dd>
-      </div>
-      <div>
-        <dt>题目链接</dt>
-        <dd><a class="text-link" href="{{ submission.problem_url }}" target="_blank" rel="noreferrer">{{ submission.problem_url }}</a></dd>
-      </div>
-      <div>
-        <dt>抓题状态</dt>
-        <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
-      </div>
-      <div>
-        <dt>{% if submission.submission_mode == "self_check" %}学生提示状态{% else %}老师诊断状态{% endif %}</dt>
-        <dd>
-          {% if submission.submission_mode == "self_check" %}
-            <span class="status status-{{ submission.student_hint_status }}">{{ submission.student_hint_status_label }}</span>
-          {% else %}
-            <span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span>
-          {% endif %}
-        </dd>
-      </div>
-      <div>
-        <dt>提交时间</dt>
-        <dd>{{ submission.created_at|beijing_datetime }}</dd>
-      </div>
-    </dl>
-  </article>
-
-  <article class="panel">
-    <p class="eyebrow">学生代码</p>
-    {% if submission.submission_mode == "self_check" %}
-      <div class="followup-action-row">
-        <button
-          class="ghost-button mini-button js-followup-context"
-          type="button"
-          data-context-label="学生代码"
-          data-context-text="{{ submission.code_text }}"
-        >
-          引用这段代码追问
-        </button>
-      </div>
-    {% endif %}
-    <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
-  </article>
-
-  {% if submission.submission_mode == "self_check" %}
-    <aside class="panel followup-sidebar" id="followup-sidebar">
-      <p class="eyebrow">{% if is_admin_preview %}追问记录预览{% else %}继续追问{% endif %}</p>
-      {% if followup_enabled %}
-        <p class="followup-intro">
-          {% if is_admin_preview %}
-            这里是学生端追问侧边栏的只读预览。老师可以查看学生卡住的具体位置。
-          {% else %}
-            如果哪一句提示、哪一段代码还是看不懂，可以继续问。回答会更直接一点，但仍不会直接给完整答案。
-          {% endif %}
-        </p>
-      {% elif submission.student_hint_status in ["queued", "running"] %}
-        <p class="empty-state">请先等待学生提示生成成功，再继续追问。</p>
-      {% elif submission.student_hint_status == "failed" %}
-        <p class="empty-state">学生提示还没有成功生成，暂时不能继续追问。</p>
-      {% else %}
-        <p class="empty-state">当前还没有可继续追问的学生提示。</p>
-      {% endif %}
-
-      <section class="followup-history-block">
-        <h3>追问记录</h3>
-        <div id="followup-messages">
-          {% set followup_empty_text = "学生还没有继续追问。" %}
-          {% include "_followup_history.html" %}
-        </div>
-        <p class="flash flash-error followup-inline-error" id="followup-inline-error" hidden></p>
-      </section>
-
-      {% if followup_enabled and not is_admin_preview %}
-        <div class="followup-quick-actions">
-          <button
-            class="ghost-button mini-button js-followup-context"
-            type="button"
-            data-context-label="提示摘要"
-            data-context-text="{{ submission.latest_student_hint_run.structured_result_json.overall_assessment }}"
-          >
-            引用提示摘要
-          </button>
-          <button
-            class="ghost-button mini-button js-followup-context"
-            type="button"
-            data-context-label="下一步检查"
-            data-context-text="{% for item in submission.latest_student_hint_run.structured_result_json.next_step_checks %}{{ item }}{% if not loop.last %}&#10;{% endif %}{% endfor %}"
-          >
-            引用下一步检查
-          </button>
-        </div>
-        <form
-          class="form-panel followup-form"
-          id="followup-form"
-          method="post"
-          action="{{ url_for('student.submission_followup', public_id=submission.public_id) }}"
-        >
-          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <div class="field">
-            <span>这次想问什么</span>
-            <textarea name="question_text" rows="5" placeholder="比如：为什么这里会漏掉最后一个字符？">{{ followup_form_data.question_text if followup_form_data else "" }}</textarea>
+{% set has_followup_drawer = submission.submission_mode == "self_check" %}
+{% set followup_enabled = has_followup_drawer and submission.latest_student_hint_run and submission.latest_student_hint_run.status == "success" %}
+{% set followup_open = followup_drawer_open if followup_drawer_open is defined else false %}
+<section
+  class="{% if has_followup_drawer %}detail-layout-with-followup{% endif %}{% if has_followup_drawer and followup_open %} is-followup-open{% endif %}"
+  {% if has_followup_drawer %}data-followup-shell data-followup-open="{{ 'true' if followup_open else 'false' }}"{% endif %}
+>
+  <div class="detail-main-column">
+    <section class="detail-grid">
+      <article class="panel detail-hero">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">{% if is_admin_preview %}学生端预览{% else %}学生端{% endif %}</p>
+            <h1>{{ submission.problem_title or submission.problem_url }}</h1>
           </div>
-          <div class="field">
-            <span>引用标题（可选）</span>
-            <input type="text" name="context_label" value="{{ followup_form_data.context_label if followup_form_data else "" }}" placeholder="比如：第 1 条提示 / 学生代码">
-          </div>
-          <div class="field">
-            <span>引用的具体内容（可选）</span>
-            <textarea name="context_text" rows="6" placeholder="如果想追问某一句提示或某一段代码，可以贴在这里。">{{ followup_form_data.context_text if followup_form_data else "" }}</textarea>
-          </div>
-          <button class="primary-button" type="submit" data-submitting-text="继续思考中，请稍候…">发送追问</button>
-        </form>
-      {% endif %}
-    </aside>
-  {% endif %}
-
-  <article class="panel">
-    {% if submission.submission_mode == "self_check" %}
-      <p class="eyebrow">学生提示</p>
-      {% if submission.student_hint_status in ["queued", "running"] %}
-        <p class="empty-state">学生提示正在后台处理中，请稍后刷新查看。</p>
-      {% elif submission.latest_student_hint_run %}
-        {% if submission.latest_student_hint_run.status == "success" %}
-          {% set result = submission.latest_student_hint_run.structured_result_json %}
-          <div class="diagnosis-summary">
-            <p class="eyebrow">提示摘要</p>
-            <h2>{{ result.overall_assessment }}</h2>
-            <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
-            {% if not is_admin_preview %}
-              <div class="followup-action-row">
-                <button
-                  class="ghost-button mini-button js-followup-context"
-                  type="button"
-                  data-context-label="提示摘要"
-                  data-context-text="{{ result.overall_assessment }}"
-                >
-                  追问这一句
-                </button>
-              </div>
+          <div class="panel-actions">
+            {% if has_followup_drawer %}
+              <button
+                class="ghost-button mini-button followup-toggle-button"
+                type="button"
+                data-followup-toggle
+                aria-controls="followup-drawer"
+                aria-expanded="{{ 'true' if followup_open else 'false' }}"
+              >
+                {% if is_admin_preview %}追问记录{% else %}继续追问{% endif %}
+              </button>
             {% endif %}
+            {% if not is_admin_preview %}
+              <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
+            {% endif %}
+            <a class="text-link" href="{{ return_url or url_for('student.submissions') }}">{% if is_admin_preview %}返回后台{% else %}返回列表{% endif %}</a>
           </div>
-          {% if result.possible_issues %}
-            {% for issue in result.possible_issues %}
-              <section class="issue-card">
-                <h3>{{ loop.index }}. {{ issue.title }}</h3>
-                <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
-                <p><strong>证据：</strong>{{ issue.evidence }}</p>
-                <p><strong>说明：</strong>{{ issue.explanation }}</p>
-                <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+        </div>
+        <dl class="meta-grid">
+          <div>
+            <dt>提交方式</dt>
+            <dd>{{ submission.submission_mode_label }}</dd>
+          </div>
+          <div>
+            <dt>题目链接</dt>
+            <dd><a class="text-link" href="{{ submission.problem_url }}" target="_blank" rel="noreferrer">{{ submission.problem_url }}</a></dd>
+          </div>
+          <div>
+            <dt>抓题状态</dt>
+            <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
+          </div>
+          <div>
+            <dt>{% if submission.submission_mode == "self_check" %}学生提示状态{% else %}老师诊断状态{% endif %}</dt>
+            <dd>
+              {% if submission.submission_mode == "self_check" %}
+                <span class="status status-{{ submission.student_hint_status }}">{{ submission.student_hint_status_label }}</span>
+              {% else %}
+                <span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span>
+              {% endif %}
+            </dd>
+          </div>
+          <div>
+            <dt>提交时间</dt>
+            <dd>{{ submission.created_at|beijing_datetime }}</dd>
+          </div>
+        </dl>
+      </article>
+
+      <article class="panel">
+        <p class="eyebrow">学生代码</p>
+        {% if has_followup_drawer and not is_admin_preview %}
+          <div class="followup-action-row">
+            <button
+              class="ghost-button mini-button js-followup-context"
+              type="button"
+              data-context-label="学生代码"
+              data-context-text="{{ submission.code_text }}"
+            >
+              引用这段代码追问
+            </button>
+          </div>
+        {% endif %}
+        <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
+      </article>
+
+      <article class="panel">
+        {% if submission.submission_mode == "self_check" %}
+          <p class="eyebrow">学生提示</p>
+          {% if submission.student_hint_status in ["queued", "running"] %}
+            <p class="empty-state">学生提示正在后台处理中，请稍后刷新查看。</p>
+          {% elif submission.latest_student_hint_run %}
+            {% if submission.latest_student_hint_run.status == "success" %}
+              {% set result = submission.latest_student_hint_run.structured_result_json %}
+              <div class="diagnosis-summary">
+                <p class="eyebrow">提示摘要</p>
+                <h2>{{ result.overall_assessment }}</h2>
+                <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
                 {% if not is_admin_preview %}
                   <div class="followup-action-row">
                     <button
                       class="ghost-button mini-button js-followup-context"
                       type="button"
-                      data-context-label="第 {{ loop.index }} 条提示"
-                      data-context-text="标题：{{ issue.title }}&#10;可能位置：{{ issue.location or '请重点检查相关逻辑块。' }}&#10;证据：{{ issue.evidence }}&#10;说明：{{ issue.explanation }}&#10;建议：{{ issue.suggested_fix }}"
+                      data-context-label="提示摘要"
+                      data-context-text="{{ result.overall_assessment }}"
                     >
-                      追问这一条
+                      追问这一句
                     </button>
                   </div>
                 {% endif %}
-              </section>
-            {% endfor %}
-          {% endif %}
-          {% if result.next_step_checks %}
-            <section class="note-block">
-              <h3>下一步检查</h3>
-              <ul>
-                {% for item in result.next_step_checks %}
-                  <li>{{ item }}</li>
+              </div>
+              {% if result.possible_issues %}
+                {% for issue in result.possible_issues %}
+                  <section class="issue-card">
+                    <h3>{{ loop.index }}. {{ issue.title }}</h3>
+                    <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
+                    <p><strong>证据：</strong>{{ issue.evidence }}</p>
+                    <p><strong>说明：</strong>{{ issue.explanation }}</p>
+                    <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+                    {% if not is_admin_preview %}
+                      <div class="followup-action-row">
+                        <button
+                          class="ghost-button mini-button js-followup-context"
+                          type="button"
+                          data-context-label="第 {{ loop.index }} 条提示"
+                          data-context-text="标题：{{ issue.title }}&#10;可能位置：{{ issue.location or '请重点检查相关逻辑块。' }}&#10;证据：{{ issue.evidence }}&#10;说明：{{ issue.explanation }}&#10;建议：{{ issue.suggested_fix }}"
+                        >
+                          追问这一条
+                        </button>
+                      </div>
+                    {% endif %}
+                  </section>
                 {% endfor %}
-              </ul>
-            </section>
-          {% endif %}
-          {% if result.encouragement_or_strategy %}
-            <section class="note-block">
-              <h3>给你的建议</h3>
-              <p>{{ result.encouragement_or_strategy }}</p>
-            </section>
+              {% endif %}
+              {% if result.next_step_checks %}
+                <section class="note-block">
+                  <h3>下一步检查</h3>
+                  <ul>
+                    {% for item in result.next_step_checks %}
+                      <li>{{ item }}</li>
+                    {% endfor %}
+                  </ul>
+                </section>
+              {% endif %}
+              {% if result.encouragement_or_strategy %}
+                <section class="note-block">
+                  <h3>给你的建议</h3>
+                  <p>{{ result.encouragement_or_strategy }}</p>
+                </section>
+              {% endif %}
+            {% else %}
+              <p class="empty-state">{{ submission.latest_student_hint_run.error_message or "学生提示暂时未生成成功。" }}</p>
+            {% endif %}
+          {% else %}
+            <p class="empty-state">还没有学生提示记录。</p>
           {% endif %}
         {% else %}
-          <p class="empty-state">{{ submission.latest_student_hint_run.error_message or "学生提示暂时未生成成功。" }}</p>
+          <p class="eyebrow">老师处理</p>
+          {% if submission.diagnosis_status in ["queued", "running"] %}
+            <p class="empty-state">已提交给老师，老师版诊断正在后台处理中。</p>
+          {% elif submission.diagnosis_status == "success" %}
+            <p class="empty-state">已提交给老师。完整诊断和正确程序仅老师端可见。</p>
+          {% elif submission.diagnosis_status == "failed" %}
+            <p class="empty-state">已提交给老师，但老师版诊断暂时失败，请联系老师重试。</p>
+          {% endif %}
         {% endif %}
-      {% else %}
-        <p class="empty-state">还没有学生提示记录。</p>
-      {% endif %}
-    {% else %}
-      <p class="eyebrow">老师处理</p>
-      {% if submission.diagnosis_status in ["queued", "running"] %}
-        <p class="empty-state">已提交给老师，老师版诊断正在后台处理中。</p>
-      {% elif submission.diagnosis_status == "success" %}
-        <p class="empty-state">已提交给老师。完整诊断和正确程序仅老师端可见。</p>
-      {% elif submission.diagnosis_status == "failed" %}
-        <p class="empty-state">已提交给老师，但老师版诊断暂时失败，请联系老师重试。</p>
-      {% endif %}
-    {% endif %}
-  </article>
+      </article>
+    </section>
+  </div>
+
+  {% if has_followup_drawer %}
+    <div class="followup-drawer-scrim" data-followup-scrim hidden aria-hidden="true"></div>
+    <aside
+      class="followup-drawer-frame"
+      id="followup-drawer"
+      data-followup-drawer
+      aria-hidden="{{ 'false' if followup_open else 'true' }}"
+    >
+      <section class="panel followup-drawer-panel">
+        <div class="followup-drawer-header">
+          <div>
+            <p class="eyebrow">{% if is_admin_preview %}追问记录预览{% else %}继续追问{% endif %}</p>
+            <h2 class="followup-drawer-title">{% if is_admin_preview %}学生追问记录{% else %}继续追问{% endif %}</h2>
+          </div>
+          <button class="ghost-button mini-button" type="button" data-followup-close>关闭</button>
+        </div>
+
+        {% if followup_enabled %}
+          <p class="followup-intro">
+            {% if is_admin_preview %}
+              这里是学生端追问抽屉的只读预览。老师可以查看学生卡住的具体位置。
+            {% else %}
+              如果哪一句提示、哪一段代码还是看不懂，可以继续问。回答会更直接一点，但仍不会直接给完整答案。
+            {% endif %}
+          </p>
+        {% elif submission.student_hint_status in ["queued", "running"] %}
+          <p class="empty-state">请先等待学生提示生成成功，再继续追问。</p>
+        {% elif submission.student_hint_status == "failed" %}
+          <p class="empty-state">学生提示还没有成功生成，暂时不能继续追问。</p>
+        {% else %}
+          <p class="empty-state">当前还没有可继续追问的学生提示。</p>
+        {% endif %}
+
+        <section class="followup-history-block">
+          <h3>追问记录</h3>
+          <div id="followup-messages">
+            {% set followup_empty_text = "学生还没有继续追问。" %}
+            {% include "_followup_history.html" %}
+          </div>
+          <p class="flash flash-error followup-inline-error" id="followup-inline-error" hidden></p>
+        </section>
+
+        {% if followup_enabled and not is_admin_preview %}
+          <div class="followup-quick-actions">
+            <button
+              class="ghost-button mini-button js-followup-context"
+              type="button"
+              data-context-label="提示摘要"
+              data-context-text="{{ submission.latest_student_hint_run.structured_result_json.overall_assessment }}"
+            >
+              引用提示摘要
+            </button>
+            <button
+              class="ghost-button mini-button js-followup-context"
+              type="button"
+              data-context-label="下一步检查"
+              data-context-text="{% for item in submission.latest_student_hint_run.structured_result_json.next_step_checks %}{{ item }}{% if not loop.last %}&#10;{% endif %}{% endfor %}"
+            >
+              引用下一步检查
+            </button>
+          </div>
+          <form
+            class="form-panel followup-form"
+            id="followup-form"
+            method="post"
+            action="{{ url_for('student.submission_followup', public_id=submission.public_id) }}"
+          >
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field">
+              <span>这次想问什么</span>
+              <textarea name="question_text" rows="5" placeholder="比如：为什么这里会漏掉最后一个字符？">{{ followup_form_data.question_text if followup_form_data else "" }}</textarea>
+            </div>
+            <div class="field">
+              <span>引用标题（可选）</span>
+              <input type="text" name="context_label" value="{{ followup_form_data.context_label if followup_form_data else "" }}" placeholder="比如：第 1 条提示 / 学生代码">
+            </div>
+            <div class="field">
+              <span>引用的具体内容（可选）</span>
+              <textarea name="context_text" rows="6" placeholder="如果想追问某一句提示或某一段代码，可以贴在这里。">{{ followup_form_data.context_text if followup_form_data else "" }}</textarea>
+            </div>
+            <button class="primary-button" type="submit" data-submitting-text="继续思考中，请稍候…">发送追问</button>
+          </form>
+        {% endif %}
+      </section>
+    </aside>
+  {% endif %}
 </section>
-{% if submission.submission_mode == "self_check" %}
+{% if has_followup_drawer %}
   <script>
     (function () {
+      const shell = document.querySelector("[data-followup-shell]");
+      const drawer = document.querySelector("[data-followup-drawer]");
+      const scrim = document.querySelector("[data-followup-scrim]");
+      const toggleButtons = Array.from(document.querySelectorAll("[data-followup-toggle]"));
+      const closeButtons = Array.from(document.querySelectorAll("[data-followup-close]"));
+      const mobileMedia = window.matchMedia("(max-width: 900px)");
+
       function scrollFollowupThreadToBottom() {
         const threadShell = document.querySelector("[data-followup-thread-shell]");
         if (threadShell instanceof HTMLElement) {
           threadShell.scrollTop = threadShell.scrollHeight;
         }
+      }
+
+      function isFollowupDrawerOpen() {
+        return shell instanceof HTMLElement && shell.dataset.followupOpen === "true";
+      }
+
+      function setFollowupDrawerState(isOpen) {
+        if (!(shell instanceof HTMLElement) || !(drawer instanceof HTMLElement)) {
+          return;
+        }
+
+        shell.dataset.followupOpen = isOpen ? "true" : "false";
+        shell.classList.toggle("is-followup-open", isOpen);
+        drawer.setAttribute("aria-hidden", isOpen ? "false" : "true");
+
+        toggleButtons.forEach(function (button) {
+          if (!(button instanceof HTMLElement)) {
+            return;
+          }
+          button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+          button.classList.toggle("is-active", isOpen);
+        });
+
+        if (scrim instanceof HTMLElement) {
+          const showScrim = isOpen && mobileMedia.matches;
+          scrim.hidden = !showScrim;
+          scrim.setAttribute("aria-hidden", showScrim ? "false" : "true");
+        }
+
+        document.body.classList.toggle("followup-drawer-open", isOpen && mobileMedia.matches);
+      }
+
+      function openFollowupDrawer() {
+        setFollowupDrawerState(true);
+      }
+
+      function closeFollowupDrawer() {
+        setFollowupDrawerState(false);
+      }
+
+      function toggleFollowupDrawer() {
+        setFollowupDrawerState(!isFollowupDrawerOpen());
       }
 
       function parseSseEvent(rawEvent) {
@@ -357,12 +441,47 @@
         }
       }
 
+      toggleButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          toggleFollowupDrawer();
+        });
+      });
+
+      closeButtons.forEach(function (button) {
+        button.addEventListener("click", function () {
+          closeFollowupDrawer();
+        });
+      });
+
+      if (scrim instanceof HTMLElement) {
+        scrim.addEventListener("click", function () {
+          closeFollowupDrawer();
+        });
+      }
+
+      if (typeof mobileMedia.addEventListener === "function") {
+        mobileMedia.addEventListener("change", function () {
+          setFollowupDrawerState(isFollowupDrawerOpen());
+        });
+      } else if (typeof mobileMedia.addListener === "function") {
+        mobileMedia.addListener(function () {
+          setFollowupDrawerState(isFollowupDrawerOpen());
+        });
+      }
+
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && isFollowupDrawerOpen()) {
+          closeFollowupDrawer();
+        }
+      });
+
       document.addEventListener("click", function (event) {
         const button = event.target.closest(".js-followup-context");
         if (!button) {
           return;
         }
 
+        openFollowupDrawer();
         const labelField = document.querySelector('input[name="context_label"]');
         const textField = document.querySelector('textarea[name="context_text"]');
         const questionField = document.querySelector('textarea[name="question_text"]');
@@ -392,6 +511,7 @@
             return;
           }
 
+          openFollowupDrawer();
           form.dataset.submitting = "true";
           if (submitButton instanceof HTMLButtonElement) {
             submitButton.disabled = true;
@@ -461,6 +581,8 @@
           }
         });
       }
+
+      setFollowupDrawerState(isFollowupDrawerOpen());
       scrollFollowupThreadToBottom();
     })();
   </script>
