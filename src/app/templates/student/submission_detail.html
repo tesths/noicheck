@@ -2,6 +2,8 @@
 {% block title %}提交详情 | NOI 错题诊断{% endblock %}
 {% block content %}
 {% set is_admin_preview = viewer_mode == "admin_preview" %}
+{% set followup_session = submission.followup_session %}
+{% set followup_enabled = submission.submission_mode == "self_check" and submission.latest_student_hint_run and submission.latest_student_hint_run.status == "success" %}
 <section class="detail-grid">
   <article class="panel detail-hero">
     <div class="panel-header">
@@ -48,8 +50,92 @@
 
   <article class="panel">
     <p class="eyebrow">学生代码</p>
+    {% if submission.submission_mode == "self_check" %}
+      <div class="followup-action-row">
+        <button
+          class="ghost-button mini-button js-followup-context"
+          type="button"
+          data-context-label="学生代码"
+          data-context-text="{{ submission.code_text }}"
+        >
+          引用这段代码追问
+        </button>
+      </div>
+    {% endif %}
     <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
   </article>
+
+  {% if submission.submission_mode == "self_check" %}
+    <aside class="panel followup-sidebar" id="followup-sidebar">
+      <p class="eyebrow">{% if is_admin_preview %}追问记录预览{% else %}继续追问{% endif %}</p>
+      {% if followup_enabled %}
+        <p class="followup-intro">
+          {% if is_admin_preview %}
+            这里是学生端追问侧边栏的只读预览。老师可以查看学生卡住的具体位置。
+          {% else %}
+            如果哪一句提示、哪一段代码还是看不懂，可以继续问。回答会更直接一点，但仍不会直接给完整答案。
+          {% endif %}
+        </p>
+      {% elif submission.student_hint_status in ["queued", "running"] %}
+        <p class="empty-state">请先等待学生提示生成成功，再继续追问。</p>
+      {% elif submission.student_hint_status == "failed" %}
+        <p class="empty-state">学生提示还没有成功生成，暂时不能继续追问。</p>
+      {% else %}
+        <p class="empty-state">当前还没有可继续追问的学生提示。</p>
+      {% endif %}
+
+      <section class="followup-history-block">
+        <h3>追问记录</h3>
+        <div id="followup-messages">
+          {% set followup_empty_text = "学生还没有继续追问。" %}
+          {% include "_followup_history.html" %}
+        </div>
+        <p class="flash flash-error followup-inline-error" id="followup-inline-error" hidden></p>
+      </section>
+
+      {% if followup_enabled and not is_admin_preview %}
+        <div class="followup-quick-actions">
+          <button
+            class="ghost-button mini-button js-followup-context"
+            type="button"
+            data-context-label="提示摘要"
+            data-context-text="{{ submission.latest_student_hint_run.structured_result_json.overall_assessment }}"
+          >
+            引用提示摘要
+          </button>
+          <button
+            class="ghost-button mini-button js-followup-context"
+            type="button"
+            data-context-label="下一步检查"
+            data-context-text="{% for item in submission.latest_student_hint_run.structured_result_json.next_step_checks %}{{ item }}{% if not loop.last %}&#10;{% endif %}{% endfor %}"
+          >
+            引用下一步检查
+          </button>
+        </div>
+        <form
+          class="form-panel followup-form"
+          id="followup-form"
+          method="post"
+          action="{{ url_for('student.submission_followup', public_id=submission.public_id) }}"
+        >
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field">
+            <span>这次想问什么</span>
+            <textarea name="question_text" rows="5" placeholder="比如：为什么这里会漏掉最后一个字符？">{{ followup_form_data.question_text if followup_form_data else "" }}</textarea>
+          </div>
+          <div class="field">
+            <span>引用标题（可选）</span>
+            <input type="text" name="context_label" value="{{ followup_form_data.context_label if followup_form_data else "" }}" placeholder="比如：第 1 条提示 / 学生代码">
+          </div>
+          <div class="field">
+            <span>引用的具体内容（可选）</span>
+            <textarea name="context_text" rows="6" placeholder="如果想追问某一句提示或某一段代码，可以贴在这里。">{{ followup_form_data.context_text if followup_form_data else "" }}</textarea>
+          </div>
+          <button class="primary-button" type="submit" data-submitting-text="继续思考中，请稍候…">发送追问</button>
+        </form>
+      {% endif %}
+    </aside>
+  {% endif %}
 
   <article class="panel">
     {% if submission.submission_mode == "self_check" %}
@@ -63,6 +149,18 @@
             <p class="eyebrow">提示摘要</p>
             <h2>{{ result.overall_assessment }}</h2>
             <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
+            {% if not is_admin_preview %}
+              <div class="followup-action-row">
+                <button
+                  class="ghost-button mini-button js-followup-context"
+                  type="button"
+                  data-context-label="提示摘要"
+                  data-context-text="{{ result.overall_assessment }}"
+                >
+                  追问这一句
+                </button>
+              </div>
+            {% endif %}
           </div>
           {% if result.possible_issues %}
             {% for issue in result.possible_issues %}
@@ -72,6 +170,18 @@
                 <p><strong>证据：</strong>{{ issue.evidence }}</p>
                 <p><strong>说明：</strong>{{ issue.explanation }}</p>
                 <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+                {% if not is_admin_preview %}
+                  <div class="followup-action-row">
+                    <button
+                      class="ghost-button mini-button js-followup-context"
+                      type="button"
+                      data-context-label="第 {{ loop.index }} 条提示"
+                      data-context-text="标题：{{ issue.title }}&#10;可能位置：{{ issue.location or '请重点检查相关逻辑块。' }}&#10;证据：{{ issue.evidence }}&#10;说明：{{ issue.explanation }}&#10;建议：{{ issue.suggested_fix }}"
+                    >
+                      追问这一条
+                    </button>
+                  </div>
+                {% endif %}
               </section>
             {% endfor %}
           {% endif %}
@@ -109,4 +219,250 @@
     {% endif %}
   </article>
 </section>
+{% if submission.submission_mode == "self_check" %}
+  <script>
+    (function () {
+      function scrollFollowupThreadToBottom() {
+        const threadShell = document.querySelector("[data-followup-thread-shell]");
+        if (threadShell instanceof HTMLElement) {
+          threadShell.scrollTop = threadShell.scrollHeight;
+        }
+      }
+
+      function parseSseEvent(rawEvent) {
+        let eventName = "message";
+        const dataLines = [];
+        rawEvent.split(/\r?\n/).forEach(function (line) {
+          if (line.startsWith("event:")) {
+            eventName = line.slice(6).trim();
+            return;
+          }
+          if (line.startsWith("data:")) {
+            dataLines.push(line.slice(5).trimStart());
+          }
+        });
+        return {
+          eventName: eventName,
+          payload: dataLines.length ? JSON.parse(dataLines.join("\n")) : {}
+        };
+      }
+
+      async function consumeEventStream(response, onEvent) {
+        if (!response.body) {
+          throw new Error("浏览器当前不能处理流式响应。");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const chunk = await reader.read();
+          buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !chunk.done });
+
+          let separatorIndex = buffer.indexOf("\n\n");
+          while (separatorIndex !== -1) {
+            const rawEvent = buffer.slice(0, separatorIndex);
+            buffer = buffer.slice(separatorIndex + 2);
+            if (rawEvent.trim()) {
+              onEvent(parseSseEvent(rawEvent));
+            }
+            separatorIndex = buffer.indexOf("\n\n");
+          }
+
+          if (chunk.done) {
+            const rest = decoder.decode();
+            if (rest) {
+              buffer += rest;
+            }
+            if (buffer.trim()) {
+              onEvent(parseSseEvent(buffer));
+            }
+            break;
+          }
+        }
+      }
+
+      function ensureFollowupThread(messagesContainer) {
+        let threadShell = messagesContainer.querySelector("[data-followup-thread-shell]");
+        if (!(threadShell instanceof HTMLElement)) {
+          messagesContainer.innerHTML = (
+            '<div class="followup-thread-shell" data-followup-thread-shell>' +
+              '<div class="followup-thread"></div>' +
+            '</div>'
+          );
+          threadShell = messagesContainer.querySelector("[data-followup-thread-shell]");
+        }
+
+        let thread = threadShell.querySelector(".followup-thread");
+        if (!(thread instanceof HTMLElement)) {
+          thread = document.createElement("div");
+          thread.className = "followup-thread";
+          threadShell.innerHTML = "";
+          threadShell.appendChild(thread);
+        }
+        return thread;
+      }
+
+      function createFollowupMessage(role, content, contextLabel, contextText) {
+        const article = document.createElement("article");
+        article.className = "followup-message followup-message-" + role;
+
+        const eyebrow = document.createElement("p");
+        eyebrow.className = "eyebrow";
+        eyebrow.textContent = role === "student" ? "学生提问" : "继续引导";
+        article.appendChild(eyebrow);
+
+        const body = document.createElement("p");
+        body.className = "followup-message-text";
+        body.textContent = content;
+        article.appendChild(body);
+
+        if (contextText) {
+          const context = document.createElement("section");
+          context.className = "followup-context";
+
+          const contextTitle = document.createElement("p");
+          contextTitle.className = "followup-context-label";
+          contextTitle.textContent = "引用：" + (contextLabel || "补充上下文");
+          context.appendChild(contextTitle);
+
+          const contextPre = document.createElement("pre");
+          contextPre.className = "inline-pre";
+          contextPre.textContent = contextText;
+          context.appendChild(contextPre);
+
+          article.appendChild(context);
+        }
+
+        return { article: article, body: body };
+      }
+
+      function appendPendingExchange(messagesContainer, questionText, contextLabel, contextText) {
+        const thread = ensureFollowupThread(messagesContainer);
+        const studentMessage = createFollowupMessage("student", questionText, contextLabel, contextText);
+        const assistantMessage = createFollowupMessage("assistant", "", "", "");
+        thread.appendChild(studentMessage.article);
+        thread.appendChild(assistantMessage.article);
+        scrollFollowupThreadToBottom();
+        return assistantMessage.body;
+      }
+
+      function resetFollowupSubmitState(form) {
+        form.dataset.submitting = "false";
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton instanceof HTMLButtonElement) {
+          submitButton.disabled = false;
+          submitButton.textContent = submitButton.dataset.originalText || "发送追问";
+        }
+      }
+
+      document.addEventListener("click", function (event) {
+        const button = event.target.closest(".js-followup-context");
+        if (!button) {
+          return;
+        }
+
+        const labelField = document.querySelector('input[name="context_label"]');
+        const textField = document.querySelector('textarea[name="context_text"]');
+        const questionField = document.querySelector('textarea[name="question_text"]');
+        if (!(labelField instanceof HTMLInputElement) || !(textField instanceof HTMLTextAreaElement)) {
+          return;
+        }
+
+        labelField.value = button.dataset.contextLabel || "";
+        textField.value = button.dataset.contextText || "";
+        if (questionField instanceof HTMLTextAreaElement) {
+          questionField.focus();
+        }
+      });
+
+      const form = document.getElementById("followup-form");
+      const messagesContainer = document.getElementById("followup-messages");
+      const inlineError = document.getElementById("followup-inline-error");
+      if (form instanceof HTMLFormElement && messagesContainer instanceof HTMLElement) {
+        const submitButton = form.querySelector('button[type="submit"]');
+        if (submitButton instanceof HTMLButtonElement && !submitButton.dataset.originalText) {
+          submitButton.dataset.originalText = submitButton.textContent || "发送追问";
+        }
+
+        form.addEventListener("submit", async function (event) {
+          event.preventDefault();
+          if (form.dataset.submitting === "true") {
+            return;
+          }
+
+          form.dataset.submitting = "true";
+          if (submitButton instanceof HTMLButtonElement) {
+            submitButton.disabled = true;
+            submitButton.textContent = submitButton.dataset.submittingText || "继续思考中，请稍候…";
+          }
+          if (inlineError instanceof HTMLElement) {
+            inlineError.hidden = true;
+            inlineError.textContent = "";
+          }
+
+          let previousHtml = messagesContainer.innerHTML;
+          try {
+            const formData = new FormData(form);
+            const assistantBody = appendPendingExchange(
+              messagesContainer,
+              String(formData.get("question_text") || ""),
+              String(formData.get("context_label") || ""),
+              String(formData.get("context_text") || "")
+            );
+            const response = await fetch(form.action, {
+              method: "POST",
+              headers: {
+                "Accept": "text/event-stream",
+                "X-Requested-With": "fetch"
+              },
+              body: formData
+            });
+
+            if (!response.ok) {
+              messagesContainer.innerHTML = previousHtml;
+              throw new Error("继续追问失败，请稍后再试。");
+            }
+
+            let completed = false;
+            await consumeEventStream(response, function (event) {
+              if (event.eventName === "delta") {
+                assistantBody.textContent += String(event.payload.text || "");
+                scrollFollowupThreadToBottom();
+                return;
+              }
+              if (event.eventName === "complete") {
+                completed = true;
+                messagesContainer.innerHTML = String(event.payload.messages_html || previousHtml);
+                if (event.payload.clear_form) {
+                  form.reset();
+                }
+                scrollFollowupThreadToBottom();
+                return;
+              }
+              if (event.eventName === "error") {
+                throw new Error(String(event.payload.error || "继续追问失败，请稍后再试。"));
+              }
+            });
+
+            if (!completed) {
+              messagesContainer.innerHTML = previousHtml;
+              throw new Error("继续追问失败，请稍后再试。");
+            }
+          } catch (error) {
+            messagesContainer.innerHTML = previousHtml;
+            if (inlineError instanceof HTMLElement) {
+              inlineError.hidden = false;
+              inlineError.textContent = error instanceof Error ? error.message : "继续追问失败，请稍后再试。";
+            }
+          } finally {
+            resetFollowupSubmitState(form);
+          }
+        });
+      }
+      scrollFollowupThreadToBottom();
+    })();
+  </script>
+{% endif %}
 {% endblock %}

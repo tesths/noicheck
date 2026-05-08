@@ -3,8 +3,17 @@ from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
 from src.app.extensions import db
-from src.app.models import AdminUser, DiagnosisRun, ProblemSnapshot, Submission, StudentUser
+from src.app.models import (
+    AdminUser,
+    DiagnosisRun,
+    ProblemSnapshot,
+    Submission,
+    SubmissionFollowupMessage,
+    SubmissionFollowupSession,
+    StudentUser,
+)
 from src.app.services.auth import hash_password
+from src.app.services.ai import StudentFollowupResponse
 
 
 def _login_admin(client) -> None:
@@ -811,3 +820,299 @@ def test_admin_can_queue_teacher_diagnosis_after_student_hint_succeeds(app, clie
                 "requested_by": "admin",
             }
         ]
+
+
+def test_student_can_submit_followup_and_persist_messages(app, client, monkeypatch):
+    def fake_followup(self, payload):
+        return StudentFollowupResponse(
+            answer_text="你先手推最后一次循环，看最后一个字符有没有进入判断。",
+            raw_content="你先手推最后一次循环，看最后一个字符有没有进入判断。",
+            latency_ms=66,
+            model_name="deepseek-v4-pro",
+        )
+
+    monkeypatch.setattr("src.app.services.student_followups.DeepSeekDiagnosisService.answer_student_followup", fake_followup)
+
+    with app.app_context():
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            problem_title="01:统计数字字符个数",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+        )
+        db.session.add_all([student, submission, snapshot])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v5",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [
+                        {
+                            "title": "边界可能偏一位",
+                            "location": "主循环结束条件",
+                            "evidence": "可能漏掉最后一个字符。",
+                            "explanation": "这样会让尾部数字没被统计。",
+                            "suggested_fix": "先手推一遍样例。",
+                        }
+                    ],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    response = client.post(
+        f"/student/submissions/{public_id}/follow-ups",
+        data={
+            "question_text": "为什么会漏掉最后一个字符？",
+            "context_label": "提示摘要",
+            "context_text": "先检查循环边界。",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "为什么会漏掉最后一个字符".encode() in response.data
+    assert "最后一个字符有没有进入判断".encode() in response.data
+
+    with app.app_context():
+        session = SubmissionFollowupSession.query.one()
+        messages = SubmissionFollowupMessage.query.order_by(SubmissionFollowupMessage.id.asc()).all()
+
+        assert session.submission_id == Submission.query.filter_by(public_id=public_id).one().id
+        assert len(messages) == 2
+        assert messages[0].role == "student"
+        assert messages[0].context_label == "提示摘要"
+        assert messages[0].context_text == "先检查循环边界。"
+        assert messages[1].role == "assistant"
+        assert messages[1].model_name == "deepseek-v4-pro"
+        assert messages[1].latency_ms == 66
+
+
+def test_admin_detail_shows_student_followup_history(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/04/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="success",
+        )
+        session = SubmissionFollowupSession(submission=submission)
+        db.session.add_all([admin, student, submission, session])
+        db.session.flush()
+        db.session.add_all(
+            [
+                SubmissionFollowupMessage(
+                    session=session,
+                    role="student",
+                    content="为什么这里会少算一次？",
+                    context_label="第 1 条提示",
+                    context_text="边界可能偏一位",
+                ),
+                SubmissionFollowupMessage(
+                    session=session,
+                    role="assistant",
+                    content="你先看最后一个字符有没有进入循环。",
+                    model_name="deepseek-v4-pro",
+                    latency_ms=50,
+                ),
+            ]
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_admin(client)
+    detail_response = client.get(f"/admin/submissions/{public_id}")
+
+    assert detail_response.status_code == 200
+    assert "学生追问记录".encode() in detail_response.data
+    assert "为什么这里会少算一次".encode() in detail_response.data
+    assert "最后一个字符有没有进入循环".encode() in detail_response.data
+
+
+def test_student_followup_streams_sse_for_chat_ui(app, client, monkeypatch):
+    def fake_followup_stream(self, payload):
+        yield "先看最后一个字符有没有进入循环，"
+        yield "再看循环结束条件。"
+
+    monkeypatch.setattr("src.app.services.student_followups.DeepSeekDiagnosisService.stream_student_followup", fake_followup_stream)
+
+    with app.app_context():
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            problem_title="01:统计数字字符个数",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+        )
+        db.session.add_all([student, submission, snapshot])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v5",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    response = client.post(
+        f"/student/submissions/{public_id}/follow-ups",
+        data={
+            "question_text": "为什么这里会漏掉最后一个字符？",
+            "context_label": "提示摘要",
+            "context_text": "先检查循环边界。",
+        },
+        headers={"Accept": "text/event-stream", "X-Requested-With": "fetch"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert response.content_type.startswith("text/event-stream")
+    body = response.get_data(as_text=True)
+    assert "event: delta" in body
+    assert "先看最后一个字符有没有进入循环".encode() in body.encode()
+    assert "event: complete" in body
+    assert "messages_html" in body
+
+
+def test_student_followup_refuses_non_programming_question_without_calling_ai(app, client, monkeypatch):
+    def fail_if_called(self, payload):
+        raise AssertionError("非编程问题不应调用 AI 继续回答")
+
+    monkeypatch.setattr("src.app.services.student_followups.DeepSeekDiagnosisService.stream_student_followup", fail_if_called)
+
+    with app.app_context():
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            problem_title="01:统计数字字符个数",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+        )
+        db.session.add_all([student, submission, snapshot])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v5",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    response = client.post(
+        f"/student/submissions/{public_id}/follow-ups",
+        data={"question_text": "今天天气怎么样？"},
+        headers={"Accept": "text/event-stream", "X-Requested-With": "fetch"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    assert response.content_type.startswith("text/event-stream")
+    body = response.get_data(as_text=True)
+    assert "event: delta" in body
+    assert "这里只回答这道题相关的编程问题".encode() in body.encode()
+
+    with app.app_context():
+        messages = SubmissionFollowupMessage.query.order_by(SubmissionFollowupMessage.id.asc()).all()
+        assert len(messages) == 2
+        assert messages[0].content == "今天天气怎么样？"
+        assert "这里只回答这道题相关的编程问题" in messages[1].content
+        assert messages[1].model_name == "policy-guardrail"
+
+
+def test_student_detail_styles_followup_history_as_scrollable_chat(client):
+    response = client.get("/styles.css")
+    css = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert ".followup-thread-shell {" in css
+    assert "overflow-y: auto;" in css
+    assert "max-height:" in css

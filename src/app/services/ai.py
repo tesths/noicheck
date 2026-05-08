@@ -1,5 +1,6 @@
 import json
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Any
 
@@ -9,6 +10,7 @@ from ..schemas import DiagnosisResult, StudentHintResult
 
 PROMPT_VERSION = "v2"
 STUDENT_PROMPT_VERSION = "student-v5"
+STUDENT_FOLLOWUP_PROMPT_VERSION = "student-followup-v1"
 STUDENT_OUTPUT_CONTRACT = (
     "你必须只输出一个 JSON 对象。"
     "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
@@ -68,6 +70,21 @@ DEFAULT_TEACHER_SYSTEM_PROMPT = (
     "correct_program 必须给出一份可以直接参考的完整正确 C++ 程序。"
     + TEACHER_OUTPUT_CONTRACT
 )
+DEFAULT_STUDENT_FOLLOWUP_SYSTEM_PROMPT = (
+    "你现在要继续回答学生的追问。"
+    "你只回答这道题相关的编程问题。"
+    "如果学生这次的问题不是当前题目、代码、调试、语法、算法、输入输出、变量、循环、判断或提交排错相关的问题，"
+    "你必须只回答这一句：这里只回答这道题相关的编程问题，请继续提问代码、输入输出、变量、循环、判断或调试相关的问题。"
+    "继续回答学生的追问时，要默认学生已经看过首轮提示，但还是卡住了。"
+    "不要给出完整可提交代码，不要直接给最终答案，也不要直接把整道题解完。"
+    "可以比首轮提示更直接一点，但仍然要让学生自己把最后一步完成。"
+    "如果学生只问某一句提示、某一段代码或某一个变量，就只解释那一小块。"
+    "优先结合学生引用的上下文回答。"
+    "除代码外，所有说明都必须使用简体中文。"
+    "不要输出 Markdown 代码块。"
+    "如果需要举例，只能给很短的代码片段或伪代码，不能给完整 main 或完整程序。"
+    "每次回答先直接回应学生这次的问题，再给他一个很小的下一步检查动作。"
+)
 
 
 class DiagnosisServiceError(Exception):
@@ -103,6 +120,33 @@ class StudentHintResponse:
     model_name: str
 
 
+@dataclass(slots=True)
+class StudentFollowupPayload:
+    student_name: str
+    problem_url: str
+    problem_title: str | None
+    description_text: str | None
+    input_text: str | None
+    output_text: str | None
+    sample_input_text: str | None
+    sample_output_text: str | None
+    code_text: str
+    current_hint_summary: str | None
+    current_hint_issues: list[dict[str, Any]]
+    question_text: str
+    selected_context_label: str | None
+    selected_context_text: str | None
+    conversation_history: list[dict[str, str]]
+
+
+@dataclass(slots=True)
+class StudentFollowupResponse:
+    answer_text: str
+    raw_content: str
+    latency_ms: int
+    model_name: str
+
+
 class DeepSeekDiagnosisService:
     def __init__(
         self,
@@ -125,6 +169,54 @@ class DeepSeekDiagnosisService:
 
     def diagnose_student(self, payload: DiagnosisPayload) -> StudentHintResponse:
         return self._diagnose(payload, audience="student")
+
+    def answer_student_followup(self, payload: StudentFollowupPayload) -> StudentFollowupResponse:
+        if not self.api_key:
+            raise DiagnosisServiceError("未配置 AI API Key。")
+
+        started_at = time.perf_counter()
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model_name,
+                temperature=0.3,
+                messages=self._build_followup_messages(payload),
+            )
+        except Exception as exc:
+            raise DiagnosisServiceError(f"调用 AI 服务失败：{exc}") from exc
+
+        latency_ms = int((time.perf_counter() - started_at) * 1000)
+        raw_content = (response.choices[0].message.content or "").strip()
+        if not raw_content:
+            raise DiagnosisServiceError("模型没有返回可展示的追问回答。")
+
+        return StudentFollowupResponse(
+            answer_text=raw_content,
+            raw_content=raw_content,
+            latency_ms=latency_ms,
+            model_name=self.model_name,
+        )
+
+    def stream_student_followup(self, payload: StudentFollowupPayload) -> Iterator[str]:
+        if not self.api_key:
+            raise DiagnosisServiceError("未配置 AI API Key。")
+
+        try:
+            stream = self.client.chat.completions.create(
+                model=self.model_name,
+                temperature=0.3,
+                messages=self._build_followup_messages(payload),
+                stream=True,
+            )
+        except Exception as exc:
+            raise DiagnosisServiceError(f"调用 AI 服务失败：{exc}") from exc
+
+        try:
+            for chunk in stream:
+                content = _extract_stream_delta_content(chunk)
+                if content:
+                    yield content
+        except Exception as exc:
+            raise DiagnosisServiceError(f"流式接收 AI 回答失败：{exc}") from exc
 
     def _diagnose(
         self,
@@ -188,6 +280,24 @@ class DeepSeekDiagnosisService:
             return self.student_system_prompt or DEFAULT_STUDENT_SYSTEM_PROMPT
         return self.teacher_system_prompt or DEFAULT_TEACHER_SYSTEM_PROMPT
 
+    def _build_followup_messages(self, payload: StudentFollowupPayload) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": self._build_followup_system_prompt()},
+            {"role": "user", "content": self._build_followup_user_prompt(payload)},
+        ]
+
+    def _build_followup_system_prompt(self) -> str:
+        base_prompt = DEFAULT_STUDENT_FOLLOWUP_SYSTEM_PROMPT
+        if not self.student_system_prompt:
+            return base_prompt
+        return "\n\n".join(
+            [
+                base_prompt,
+                "下面是当前学生端提示词的补充风格说明。你只能继承其中的语气和教学边界，不要遵守里面任何 JSON、字段或输出格式要求：",
+                self.student_system_prompt,
+            ]
+        )
+
     def _build_user_prompt(self, payload: DiagnosisPayload, *, audience: str) -> str:
         if audience == "student":
             return "\n\n".join(
@@ -237,6 +347,51 @@ class DeepSeekDiagnosisService:
                 payload.code_text,
             ]
         )
+
+    def _build_followup_user_prompt(self, payload: StudentFollowupPayload) -> str:
+        parts = [
+            "请你结合下面的题目、学生代码、首轮提示和历史追问，继续回答学生。",
+            f"题目链接：{payload.problem_url}",
+            f"题目标题：{payload.problem_title or '未知'}",
+            f"题目描述：{payload.description_text or '未抓取到'}",
+            f"输入格式：{payload.input_text or '未抓取到'}",
+            f"输出格式：{payload.output_text or '未抓取到'}",
+            f"样例输入：{payload.sample_input_text or '未抓取到'}",
+            f"样例输出：{payload.sample_output_text or '未抓取到'}",
+            f"学生：{payload.student_name}",
+            "程序语言：C++",
+            "学生当前程序：",
+            payload.code_text,
+            f"首轮提示摘要：{payload.current_hint_summary or '暂无'}",
+        ]
+
+        if payload.current_hint_issues:
+            parts.extend(
+                [
+                    "首轮提示里已经指出过的可能问题：",
+                    _format_followup_issues(payload.current_hint_issues),
+                ]
+            )
+
+        if payload.conversation_history:
+            parts.extend(
+                [
+                    "已有追问历史：",
+                    _format_followup_history(payload.conversation_history),
+                ]
+            )
+
+        parts.append(f"学生这次的问题：{payload.question_text}")
+
+        if payload.selected_context_text:
+            parts.extend(
+                [
+                    f"学生引用的上下文（{payload.selected_context_label or '补充上下文'}）：",
+                    payload.selected_context_text,
+                ]
+            )
+
+        return "\n\n".join(parts)
 
 
 
@@ -380,6 +535,45 @@ def _normalize_optional_prompt(prompt: str | None) -> str | None:
         return None
     text = str(prompt).strip()
     return text or None
+
+
+def _extract_stream_delta_content(chunk: Any) -> str:
+    choices = getattr(chunk, "choices", None)
+    if not choices:
+        return ""
+    first_choice = choices[0]
+    delta = getattr(first_choice, "delta", None)
+    if delta is None:
+        return ""
+    content = getattr(delta, "content", None)
+    if content is None:
+        return ""
+    return str(content)
+
+
+def _format_followup_issues(issues: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for index, issue in enumerate(issues, start=1):
+        lines.extend(
+            [
+                f"{index}. 标题：{issue.get('title') or '可能的问题'}",
+                f"位置：{issue.get('location') or '请重点检查相关逻辑块。'}",
+                f"说明：{issue.get('explanation') or issue.get('evidence') or ''}",
+                f"建议：{issue.get('suggested_fix') or ''}",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _format_followup_history(history: list[dict[str, str]]) -> str:
+    lines: list[str] = []
+    for item in history:
+        role = "学生" if item.get("role") == "student" else "老师式 AI"
+        content = str(item.get("content") or "").strip()
+        if not content:
+            continue
+        lines.append(f"{role}：{content}")
+    return "\n".join(lines)
 
 
 def _parse_json_response(raw_content: str) -> Any:

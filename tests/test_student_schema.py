@@ -4,7 +4,7 @@ from sqlalchemy import inspect
 
 from src.app import create_app
 from src.app.extensions import db
-from src.app.models import DiagnosisRun, StudentUser, Submission
+from src.app.models import DiagnosisRun, StudentUser, Submission, SubmissionFollowupMessage, SubmissionFollowupSession
 
 
 def test_bootstrap_repairs_student_schema_for_legacy_database(tmp_path):
@@ -91,6 +91,8 @@ def test_bootstrap_repairs_student_schema_for_legacy_database(tmp_path):
     with app.app_context():
         table_names = set(inspect(db.engine).get_table_names())
         assert StudentUser.__tablename__ in table_names
+        assert SubmissionFollowupSession.__tablename__ in table_names
+        assert SubmissionFollowupMessage.__tablename__ in table_names
 
         submission = Submission.query.filter_by(public_id="legacy-student-submission").one()
         diagnosis_run = DiagnosisRun.query.one()

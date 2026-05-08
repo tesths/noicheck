@@ -59,6 +59,12 @@ class Submission(db.Model):
         back_populates="submission",
         cascade="all, delete-orphan",
     )
+    followup_session = db.relationship(
+        "SubmissionFollowupSession",
+        back_populates="submission",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     @property
     def latest_diagnosis_run(self):
@@ -105,6 +111,12 @@ class Submission(db.Model):
         if self.student_user is None:
             return self.student_name
         return self.student_user.display_name
+
+    @property
+    def followup_messages(self):
+        if self.followup_session is None:
+            return []
+        return self.followup_session.messages
 
     def mark_deleted(self) -> None:
         self.deleted_at = datetime.now(timezone.utc)

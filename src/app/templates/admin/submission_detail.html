@@ -161,6 +161,13 @@
     {% endif %}
   </article>
 
+  <article class="panel">
+    <p class="eyebrow">学生追问记录</p>
+    {% set followup_session = submission.followup_session %}
+    {% set followup_empty_text = "学生还没有继续追问。" %}
+    {% include "_followup_history.html" %}
+  </article>
+
   <article class="panel diagnosis-program-panel">
     <p class="eyebrow">参考程序</p>
     {% if submission.diagnosis_status in ["queued", "running"] %}

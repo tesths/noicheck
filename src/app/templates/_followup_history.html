@@ -1,0 +1,23 @@
+<div class="followup-thread-shell" data-followup-thread-shell>
+  {% if followup_session and followup_session.messages %}
+    <div class="followup-thread">
+      {% for message in followup_session.messages %}
+        <article class="followup-message followup-message-{{ message.role }}">
+          <p class="eyebrow">{% if message.role == "student" %}学生提问{% else %}继续引导{% endif %}</p>
+          <p class="followup-message-text">{{ message.content }}</p>
+          {% if message.context_text %}
+            <section class="followup-context">
+              <p class="followup-context-label">引用：{{ message.context_label or "补充上下文" }}</p>
+              <pre class="inline-pre">{{ message.context_text }}</pre>
+            </section>
+          {% endif %}
+          {% if message.role == "assistant" and message.model_name %}
+            <p class="followup-meta">模型：{{ message.model_name }}{% if message.latency_ms %} · {{ message.latency_ms }} ms{% endif %}</p>
+          {% endif %}
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty-state">{{ followup_empty_text or "还没有追问记录。" }}</p>
+  {% endif %}
+</div>

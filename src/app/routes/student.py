@@ -1,10 +1,24 @@
+import json
 import secrets
+import time
 
-from flask import Blueprint, current_app, flash, redirect, render_template, request, url_for
+from flask import (
+    Blueprint,
+    Response,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    stream_with_context,
+    url_for,
+)
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..extensions import db
 from ..models import Submission
+from ..services.ai import DeepSeekDiagnosisService
 from ..services.auth import (
     authenticate_student,
     current_student,
@@ -17,6 +31,15 @@ from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job, enqueue_student_hint_job
 from ..services.pagination import normalize_page, paginate_query
 from ..services.problem_fetcher import ProblemFetchError, normalize_openjudge_url
+from ..services.settings import get_student_system_prompt
+from ..services.student_followups import (
+    DiagnosisServiceError,
+    FOLLOWUP_POLICY_REFUSAL_TEXT,
+    create_student_followup_exchange,
+    prepare_student_followup,
+    record_followup_exchange,
+    validate_followup_form,
+)
 
 student_bp = Blueprint("student", __name__, url_prefix="/student")
 
@@ -120,6 +143,62 @@ def _existing_submission_for_request(*, student_id: int, request_token: str) -> 
         request_token=request_token,
         deleted_at=None,
     ).first()
+
+
+def _student_submission_detail_query(*, student_id: int, public_id: str):
+    return Submission.query.filter_by(
+        public_id=public_id,
+        student_user_id=student_id,
+        deleted_at=None,
+    )
+
+
+def _render_submission_detail(
+    *,
+    student,
+    submission: Submission,
+    followup_form_data=None,
+    status_code: int = 200,
+):
+    rendered = render_template(
+        "student/submission_detail.html",
+        student=student,
+        submission=submission,
+        followup_form_data=followup_form_data,
+    )
+    if status_code == 200:
+        return rendered
+    return rendered, status_code
+
+
+def _wants_stream_response() -> bool:
+    accept_header = request.headers.get("Accept", "")
+    return "text/event-stream" in accept_header
+
+
+def _wants_json_response() -> bool:
+    accept_header = request.headers.get("Accept", "")
+    return not _wants_stream_response() and "application/json" in accept_header
+
+
+def _render_followup_history(submission: Submission) -> str:
+    return render_template(
+        "_followup_history.html",
+        followup_session=submission.followup_session,
+        followup_empty_text="学生还没有继续追问。",
+    )
+
+
+def _sse_event(event_name: str, payload: dict[str, object]) -> str:
+    return f"event: {event_name}\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
+def _sse_response(event_name: str, payload: dict[str, object]) -> Response:
+    return Response(
+        _sse_event(event_name, payload),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 def _create_student_submission(*, submission_mode: str):
@@ -292,9 +371,195 @@ def submission_new_teacher_review():
 @student_login_required
 def submission_detail(public_id: str):
     student = current_student()
-    submission = Submission.query.filter_by(
-        public_id=public_id,
-        student_user_id=student.id,
-        deleted_at=None,
-    ).first_or_404()
-    return render_template("student/submission_detail.html", student=student, submission=submission)
+    submission = _student_submission_detail_query(student_id=student.id, public_id=public_id).first_or_404()
+    return _render_submission_detail(student=student, submission=submission)
+
+
+@student_bp.post("/submissions/<public_id>/follow-ups")
+@student_login_required
+def submission_followup(public_id: str):
+    student = current_student()
+    submission = _student_submission_detail_query(student_id=student.id, public_id=public_id).first_or_404()
+    form_data = {
+        "question_text": request.form.get("question_text", "").strip(),
+        "context_label": request.form.get("context_label", "").strip(),
+        "context_text": request.form.get("context_text", "").strip(),
+    }
+
+    errors = validate_followup_form(
+        form_data["question_text"],
+        form_data["context_label"],
+        form_data["context_text"],
+    )
+    if errors:
+        if _wants_stream_response():
+            return _sse_response("error", {"error": errors[0]})
+        if _wants_json_response():
+            return jsonify({"ok": False, "error": errors[0]}), 400
+        for error in errors:
+            flash(error, "error")
+        return _render_submission_detail(
+            student=student,
+            submission=submission,
+            followup_form_data=form_data,
+            status_code=400,
+        )
+
+    if _wants_stream_response():
+        try:
+            preparation = prepare_student_followup(
+                submission,
+                question_text=form_data["question_text"],
+                context_label=form_data["context_label"],
+                context_text=form_data["context_text"],
+            )
+        except ValueError as exc:
+            db.session.rollback()
+            return _sse_response("error", {"error": str(exc)})
+
+        def generate():
+            if preparation.policy_refusal_text:
+                try:
+                    response = record_followup_exchange(
+                        submission,
+                        preparation=preparation,
+                        student_content=form_data["question_text"],
+                        context_label=form_data["context_label"],
+                        context_text=form_data["context_text"],
+                        assistant_content=FOLLOWUP_POLICY_REFUSAL_TEXT,
+                        latency_ms=0,
+                    )
+                    yield _sse_event("delta", {"text": response.answer_text})
+                    yield _sse_event(
+                        "complete",
+                        {
+                            "ok": True,
+                            "answer_text": response.answer_text,
+                            "model_name": response.model_name,
+                            "messages_html": _render_followup_history(submission),
+                            "clear_form": True,
+                        },
+                    )
+                except SQLAlchemyError:
+                    db.session.rollback()
+                    current_app.logger.exception("学生追问记录保存失败")
+                    yield _sse_event("error", {"error": "保存追问记录失败，请稍后再试。"})
+                return
+
+            ai_config = {
+                "api_key": str(
+                    current_app.config.get("AI_API_KEY") or current_app.config.get("DEEPSEEK_API_KEY") or ""
+                ).strip(),
+                "base_url": str(
+                    current_app.config.get("AI_BASE_URL")
+                    or current_app.config.get("DEEPSEEK_BASE_URL")
+                    or "https://api.deepseek.com"
+                ).strip(),
+            }
+            service = DeepSeekDiagnosisService(
+                api_key=ai_config["api_key"],
+                base_url=ai_config["base_url"],
+                model_name=preparation.model_name,
+                student_system_prompt=get_student_system_prompt(),
+            )
+
+            chunks: list[str] = []
+            started_at = time.perf_counter()
+            try:
+                for chunk in service.stream_student_followup(preparation.payload):
+                    chunks.append(chunk)
+                    yield _sse_event("delta", {"text": chunk})
+
+                answer_text = "".join(chunks).strip()
+                if not answer_text:
+                    raise DiagnosisServiceError("模型没有返回可展示的追问回答。")
+
+                response = record_followup_exchange(
+                    submission,
+                    preparation=preparation,
+                    student_content=form_data["question_text"],
+                    context_label=form_data["context_label"],
+                    context_text=form_data["context_text"],
+                    assistant_content=answer_text,
+                    latency_ms=int((time.perf_counter() - started_at) * 1000),
+                )
+                yield _sse_event(
+                    "complete",
+                    {
+                        "ok": True,
+                        "answer_text": response.answer_text,
+                        "model_name": response.model_name,
+                        "messages_html": _render_followup_history(submission),
+                        "clear_form": True,
+                    },
+                )
+            except SQLAlchemyError:
+                db.session.rollback()
+                current_app.logger.exception("学生追问记录保存失败")
+                yield _sse_event("error", {"error": "保存追问记录失败，请稍后再试。"})
+            except DiagnosisServiceError as exc:
+                db.session.rollback()
+                current_app.logger.exception("学生追问 AI 流式调用失败")
+                yield _sse_event("error", {"error": str(exc)})
+
+        return Response(
+            stream_with_context(generate()),
+            mimetype="text/event-stream",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    try:
+        response = create_student_followup_exchange(
+            submission,
+            question_text=form_data["question_text"],
+            context_label=form_data["context_label"],
+            context_text=form_data["context_text"],
+        )
+    except ValueError as exc:
+        db.session.rollback()
+        if _wants_json_response():
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        flash(str(exc), "error")
+        return _render_submission_detail(
+            student=student,
+            submission=submission,
+            followup_form_data=form_data,
+            status_code=400,
+        )
+    except SQLAlchemyError:
+        db.session.rollback()
+        if _wants_json_response():
+            return jsonify({"ok": False, "error": "保存追问记录失败，请稍后再试。"}), 500
+        current_app.logger.exception("学生追问记录保存失败")
+        flash("保存追问记录失败，请稍后再试。", "error")
+        return _render_submission_detail(
+            student=student,
+            submission=submission,
+            followup_form_data=form_data,
+            status_code=500,
+        )
+    except DiagnosisServiceError as exc:
+        db.session.rollback()
+        if _wants_json_response():
+            return jsonify({"ok": False, "error": str(exc)}), 502
+        current_app.logger.exception("学生追问 AI 调用失败")
+        flash(str(exc), "error")
+        return _render_submission_detail(
+            student=student,
+            submission=submission,
+            followup_form_data=form_data,
+            status_code=502,
+        )
+
+    if _wants_json_response():
+        return jsonify(
+            {
+                "ok": True,
+                "answer_text": response.answer_text,
+                "model_name": response.model_name,
+                "messages_html": _render_followup_history(submission),
+                "clear_form": True,
+            }
+        )
+
+    return redirect(f"{url_for('student.submission_detail', public_id=public_id)}#followup-sidebar")

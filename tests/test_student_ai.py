@@ -8,6 +8,8 @@ from src.app.services.ai import (
     DeepSeekDiagnosisService,
     DiagnosisPayload,
     StudentHintResponse,
+    StudentFollowupPayload,
+    StudentFollowupResponse,
 )
 from src.app.services.problem_fetcher import ProblemContent
 from src.app.services.auth import hash_password
@@ -121,6 +123,114 @@ def test_deepseek_service_uses_custom_student_system_prompt():
     call = client.chat.completions.calls[0]
     assert call["messages"][0]["content"] == "学生自定义系统提示"
     assert "题目描述" in call["messages"][1]["content"]
+
+
+def test_deepseek_service_generates_student_followup_answer_with_context():
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                calls=[],
+                create=lambda **kwargs: client.chat.completions.calls.append(kwargs) or SimpleNamespace(
+                    choices=[SimpleNamespace(message=SimpleNamespace(content="这里更像是循环少检查了一次末尾字符。你先手推最后一轮。"))]
+                ),
+            )
+        )
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.answer_student_followup(
+        StudentFollowupPayload(
+            student_name="小明",
+            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            description_text="输入一行字符，统计其中数字字符的个数。",
+            input_text="一行字符串。",
+            output_text="输出数字字符个数。",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            code_text="int main() { return 0; }",
+            current_hint_summary="先检查循环结束条件。",
+            current_hint_issues=[
+                {
+                    "title": "可能漏掉最后一个字符",
+                    "location": "主循环结束条件",
+                    "evidence": "边界值输入时可能少统计一次。",
+                    "explanation": "如果循环提前结束，尾部数字不会被计入。",
+                    "suggested_fix": "重点检查下标递增和循环终止条件。",
+                }
+            ],
+            question_text="为什么这里要检查最后一个字符？",
+            selected_context_label="提示摘要",
+            selected_context_text="先检查循环结束条件。",
+            conversation_history=[
+                {"role": "student", "content": "我还是不懂循环为什么会少一次。"},
+                {"role": "assistant", "content": "你先看最后一个字符有没有进入循环。"},
+            ],
+        )
+    )
+
+    call = client.chat.completions.calls[0]
+    assert "继续回答学生的追问" in call["messages"][0]["content"]
+    assert "不要给出完整可提交代码" in call["messages"][0]["content"]
+    assert "只回答这道题相关的编程问题" in call["messages"][0]["content"]
+    assert "学生这次的问题：为什么这里要检查最后一个字符？" in call["messages"][1]["content"]
+    assert "学生引用的上下文（提示摘要）" in call["messages"][1]["content"]
+    assert "我还是不懂循环为什么会少一次。" in call["messages"][1]["content"]
+    assert isinstance(result, StudentFollowupResponse)
+    assert result.answer_text == "这里更像是循环少检查了一次末尾字符。你先手推最后一轮。"
+
+
+def test_deepseek_service_streams_student_followup_chunks():
+    chunks = [
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="先看最后一个"))]),
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content="字符有没有进入循环。"))]),
+        SimpleNamespace(choices=[SimpleNamespace(delta=SimpleNamespace(content=None))]),
+    ]
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                calls=[],
+                create=lambda **kwargs: client.chat.completions.calls.append(kwargs) or iter(chunks),
+            )
+        )
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    streamed = list(
+        service.stream_student_followup(
+            StudentFollowupPayload(
+                student_name="小明",
+                problem_url="https://noi.openjudge.cn/ch0107/01/",
+                problem_title="01:统计数字字符个数",
+                description_text="输入一行字符，统计其中数字字符的个数。",
+                input_text="一行字符串。",
+                output_text="输出数字字符个数。",
+                sample_input_text="abc123",
+                sample_output_text="3",
+                code_text="int main() { return 0; }",
+                current_hint_summary="先检查循环结束条件。",
+                current_hint_issues=[],
+                question_text="为什么这里要检查最后一个字符？",
+                selected_context_label=None,
+                selected_context_text=None,
+                conversation_history=[],
+            )
+        )
+    )
+
+    call = client.chat.completions.calls[0]
+    assert call["stream"] is True
+    assert streamed == ["先看最后一个", "字符有没有进入循环。"]
 
 
 def test_deepseek_service_student_prompt_guides_stub_code():

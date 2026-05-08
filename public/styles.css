@@ -601,6 +601,83 @@ th {
   font-size: 20px;
 }
 
+.followup-sidebar {
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
+
+.followup-intro,
+.followup-meta {
+  margin: 0;
+}
+
+.followup-history-block {
+  display: grid;
+  gap: 12px;
+}
+
+.followup-history-block h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.followup-thread-shell {
+  max-height: min(56vh, 560px);
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.followup-thread {
+  display: grid;
+  gap: 12px;
+}
+
+.followup-message {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(74, 50, 35, 0.1);
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.followup-message-student {
+  background: rgba(255, 247, 238, 0.9);
+}
+
+.followup-message-assistant {
+  background: rgba(249, 251, 245, 0.92);
+}
+
+.followup-message-text,
+.followup-context-label {
+  margin: 0;
+}
+
+.followup-context {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(74, 50, 35, 0.08);
+}
+
+.followup-quick-actions,
+.followup-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.followup-form textarea {
+  min-height: 120px;
+}
+
+.followup-inline-error {
+  margin: 0;
+}
+
 .meta-grid,
 .content-list {
   display: grid;
