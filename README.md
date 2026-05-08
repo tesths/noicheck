@@ -23,6 +23,9 @@
 
 - 统一登录入口 `/`
 - 学生端双提交流程：`自己提交` / `提交给老师`
+- 学生提交详情右侧追问抽屉：保留原始代码和学生提示，支持围绕当前题目继续多轮追问
+- 追问链路只回答题目相关的编程问题，跑题内容会统一拒答并引导回代码、输入输出和调试
+- 教师可从学生视角查看同一套追问记录抽屉（只读）
 - 教师后台学生管理：创建、重置密码、禁用、启用
 - 教师后台系统设置：切换 AI 模型，分别配置老师版 / 学生版系统提示词
 - 学生端与教师端 AI 结果分流
@@ -125,7 +128,8 @@ uv run flask --app src.index db upgrade
 说明：
 
 - workflow 在 `main` 分支 push 时自动运行。
-- 脚本会先执行历史库 Alembic 基线补写，再执行 `flask db upgrade`。
+- 脚本会先执行历史库 Alembic 基线补写，再执行 `flask db upgrade`，最后清洗旧版追问消息内容。
+- 迁移脚本和相关 revision 已按线上旧库场景做幂等处理，避免重复补列或补表时报错。
 - 这套流程就是为了适配 Vercel 直接导入 GitHub 仓库的部署方式。
 
 如果要手动跑迁移：
@@ -135,6 +139,13 @@ bash scripts/prod-db-migrate.sh
 ```
 
 前提是当前环境已设置 `DATABASE_URL` 或 `MIGRATION_DATABASE_URL`。
+
+如果只想检查或清洗历史追问记录，可单独执行：
+
+```bash
+uv run flask clean-followup-history --dry-run
+uv run flask clean-followup-history
+```
 
 ## 测试
 
@@ -196,7 +207,9 @@ uv run pytest tests/test_admin_submission_management.py -q
 - 学生创建账号、重置密码、启停用
 - 学生 `自己提交`
 - 学生 `提交给老师`
+- 学生提交详情页右侧追问抽屉开关、多轮追问、跑题拒答
 - 教师列表筛选、详情查看、删除记录
+- 教师学生视角预览中的追问记录只读抽屉
 - 异步抓题与 AI 状态流转
 
 ## 当前已知边界
