@@ -11,6 +11,7 @@ from .routes.internal import internal_bp
 from .routes.public import public_bp
 from .routes.student import student_bp
 from .services.auth import current_student, enforce_exclusive_login, register_auth_commands
+from .services.followup_cleanup import register_followup_cleanup_commands
 from .services.timezone import format_beijing_time
 
 
@@ -30,6 +31,7 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
     app.register_blueprint(student_bp)
     app.register_blueprint(internal_bp)
     register_auth_commands(app)
+    register_followup_cleanup_commands(app)
 
     @app.context_processor
     def _inject_student_context() -> dict[str, object]:

@@ -27,3 +27,6 @@ uv run flask db upgrade
 
 echo "== Current revision (after) =="
 uv run flask db current
+
+echo "== Cleaning legacy follow-up history =="
+uv run flask clean-followup-history
