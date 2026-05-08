@@ -1,4 +1,9 @@
-from sqlalchemy import inspect, text
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import create_engine, inspect, text
 
 from src.app.extensions import db
 from src.app.services.migration_state import (
@@ -44,3 +49,40 @@ def test_prepare_legacy_alembic_version_rejects_unknown_partial_legacy_schema(ap
             assert "无法安全推断 Alembic 基线" in str(exc)
         else:
             raise AssertionError("预期应拒绝不完整的历史 schema")
+
+
+def test_submission_request_token_migration_skips_existing_column(tmp_path):
+    database_path = tmp_path / "migration-existing-request-token.db"
+    engine = create_engine(f"sqlite:///{database_path}")
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "3f6d9a7c1b20_submission_request_token.py"
+    )
+    spec = spec_from_file_location("migration_submission_request_token", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration_module = module_from_spec(spec)
+    spec.loader.exec_module(migration_module)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE submissions ("
+                "id INTEGER NOT NULL PRIMARY KEY, "
+                "request_token VARCHAR(64)"
+                ")"
+            )
+        )
+
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        original_op = migration_module.op
+        migration_module.op = operations
+        try:
+            migration_module.upgrade()
+        finally:
+            migration_module.op = original_op
+
+    indexes = {index["name"] for index in inspect(engine).get_indexes("submissions")}
+    assert "ix_submissions_request_token" in indexes
