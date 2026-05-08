@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from bs4 import BeautifulSoup
@@ -1033,6 +1034,97 @@ def test_student_followup_streams_sse_for_chat_ui(app, client, monkeypatch):
     assert "先看最后一个字符有没有进入循环".encode() in body.encode()
     assert "event: complete" in body
     assert "messages_html" in body
+
+
+def test_student_followup_stream_formats_json_answer_before_persisting(app, client, monkeypatch):
+    def fake_followup_stream(self, payload):
+        content = json.dumps(
+            {
+                "overall_assessment": "先检查循环结束条件，它现在只会让 i 取到 0。",
+                "confidence": "high",
+                "possible_issues": [
+                    {
+                        "title": "循环结束条件写死了",
+                        "location": "for(int i=0;i<=0;i++)",
+                        "evidence": "第一次循环后 i 变成 1，1<=0 立刻不成立。",
+                        "explanation": "中间那个条件决定循环还能不能继续，所以它不能一直写死在 0 上。",
+                        "suggested_fix": "如果要遍历字符串，就把条件改成和字符串长度比较，比如 i < dna1.length()。",
+                    }
+                ],
+                "next_step_checks": ["先把输入改成两个 DNA 字符串变量。"],
+                "encouragement_or_strategy": "先只改这一处循环条件，不要一下子全重写。",
+            },
+            ensure_ascii=False,
+        )
+        yield content[:40]
+        yield content[40:]
+
+    monkeypatch.setattr("src.app.services.student_followups.DeepSeekDiagnosisService.stream_student_followup", fake_followup_stream)
+
+    with app.app_context():
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            problem_title="01:统计数字字符个数",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        snapshot = ProblemSnapshot(
+            submission=submission,
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+        )
+        db.session.add_all([student, submission, snapshot])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v5",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先检查循环边界。",
+                    "confidence": "medium",
+                    "possible_issues": [],
+                    "next_step_checks": ["手算 abc123。"],
+                    "encouragement_or_strategy": "先模拟，再改最小一处。",
+                },
+                summary_text="先检查循环边界。",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    response = client.post(
+        f"/student/submissions/{public_id}/follow-ups",
+        data={"question_text": "为什么这里只循环一次？"},
+        headers={"Accept": "text/event-stream", "X-Requested-With": "fetch"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 200
+    body = response.get_data(as_text=True)
+    assert "messages_html" in body
+    assert "先盯住：循环结束条件写死了" in body
+
+    with app.app_context():
+        messages = SubmissionFollowupMessage.query.order_by(SubmissionFollowupMessage.id.asc()).all()
+        assert len(messages) == 2
+        assert messages[1].content.startswith("先检查循环结束条件，它现在只会让 i 取到 0。")
+        assert "先盯住：循环结束条件写死了" in messages[1].content
+        assert not messages[1].content.strip().startswith("{")
 
 
 def test_student_followup_refuses_non_programming_question_without_calling_ai(app, client, monkeypatch):

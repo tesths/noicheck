@@ -5,6 +5,7 @@ from src.app.extensions import db
 from src.app.models import DiagnosisRun, Submission, StudentUser
 from src.app.schemas import StudentHintResult
 from src.app.services.ai import (
+    DEFAULT_STUDENT_SYSTEM_PROMPT,
     DeepSeekDiagnosisService,
     DiagnosisPayload,
     StudentHintResponse,
@@ -183,6 +184,94 @@ def test_deepseek_service_generates_student_followup_answer_with_context():
     assert "我还是不懂循环为什么会少一次。" in call["messages"][1]["content"]
     assert isinstance(result, StudentFollowupResponse)
     assert result.answer_text == "这里更像是循环少检查了一次末尾字符。你先手推最后一轮。"
+
+
+def test_deepseek_service_followup_prompt_does_not_inherit_json_contract():
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=lambda **kwargs: None))),
+        student_system_prompt=DEFAULT_STUDENT_SYSTEM_PROMPT,
+    )
+
+    prompt = service._build_followup_system_prompt()
+
+    assert "你必须只输出一个 JSON 对象" not in prompt
+    assert "第一个非空字符必须是 {" not in prompt
+    assert "请输出严格 JSON" not in prompt
+    assert "只回答这道题相关的编程问题" in prompt
+
+
+def test_deepseek_service_formats_student_followup_json_answer():
+    client = SimpleNamespace(
+        chat=SimpleNamespace(
+            completions=SimpleNamespace(
+                calls=[],
+                create=lambda **kwargs: client.chat.completions.calls.append(kwargs) or SimpleNamespace(
+                    choices=[
+                        SimpleNamespace(
+                            message=SimpleNamespace(
+                                content=json.dumps(
+                                    {
+                                        "overall_assessment": "这行循环条件只会让 i 等于 0 时进入循环，所以它天然只跑一次。",
+                                        "confidence": "high",
+                                        "possible_issues": [
+                                            {
+                                                "title": "循环结束条件写得太死",
+                                                "location": "for(int i=0;i<=0;i++)",
+                                                "evidence": "第一次循环结束后 i 会变成 1，这时 1<=0 不成立。",
+                                                "explanation": "循环是否继续，取决于中间那个条件。条件只允许 i<=0，就意味着除了 0 之外都进不去。",
+                                                "suggested_fix": "如果你想遍历整个字符串，条件应该跟字符串长度比较，比如 i < dna1.length()。",
+                                            }
+                                        ],
+                                        "next_step_checks": [
+                                            "先把输入改成两个 DNA 字符串变量，再决定循环要遍历哪个字符串。",
+                                            "然后把循环条件改成 i < dna1.length()，手推一遍最后一次循环。",
+                                        ],
+                                        "encouragement_or_strategy": "你已经抓到关键点了，先改循环条件这一处就行。",
+                                    },
+                                    ensure_ascii=False,
+                                )
+                            )
+                        )
+                    ]
+                ),
+            )
+        )
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.answer_student_followup(
+        StudentFollowupPayload(
+            student_name="小明",
+            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            description_text="输入一行字符，统计其中数字字符的个数。",
+            input_text="一行字符串。",
+            output_text="输出数字字符个数。",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            code_text="int main() { return 0; }",
+            current_hint_summary="先检查循环结束条件。",
+            current_hint_issues=[],
+            question_text="为什么这里只会执行一次？",
+            selected_context_label=None,
+            selected_context_text=None,
+            conversation_history=[],
+        )
+    )
+
+    assert result.raw_content.strip().startswith("{")
+    assert result.answer_text.startswith("这行循环条件只会让 i 等于 0 时进入循环")
+    assert "先盯住：循环结束条件写得太死" in result.answer_text
+    assert "1. 先把输入改成两个 DNA 字符串变量" in result.answer_text
+    assert not result.answer_text.strip().startswith("{")
 
 
 def test_deepseek_service_streams_student_followup_chunks():

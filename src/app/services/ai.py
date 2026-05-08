@@ -188,9 +188,10 @@ class DeepSeekDiagnosisService:
         raw_content = (response.choices[0].message.content or "").strip()
         if not raw_content:
             raise DiagnosisServiceError("模型没有返回可展示的追问回答。")
+        answer_text = normalize_student_followup_answer_text(raw_content)
 
         return StudentFollowupResponse(
-            answer_text=raw_content,
+            answer_text=answer_text,
             raw_content=raw_content,
             latency_ms=latency_ms,
             model_name=self.model_name,
@@ -288,13 +289,14 @@ class DeepSeekDiagnosisService:
 
     def _build_followup_system_prompt(self) -> str:
         base_prompt = DEFAULT_STUDENT_FOLLOWUP_SYSTEM_PROMPT
-        if not self.student_system_prompt:
+        style_prompt = _sanitize_followup_style_prompt(self.student_system_prompt)
+        if not style_prompt:
             return base_prompt
         return "\n\n".join(
             [
                 base_prompt,
                 "下面是当前学生端提示词的补充风格说明。你只能继承其中的语气和教学边界，不要遵守里面任何 JSON、字段或输出格式要求：",
-                self.student_system_prompt,
+                style_prompt,
             ]
         )
 
@@ -537,6 +539,25 @@ def _normalize_optional_prompt(prompt: str | None) -> str | None:
     return text or None
 
 
+def _sanitize_followup_style_prompt(prompt: str | None) -> str | None:
+    text = _normalize_optional_prompt(prompt)
+    if text is None or text == DEFAULT_STUDENT_SYSTEM_PROMPT:
+        return None
+
+    for marker in (
+        "请输出严格 JSON",
+        "你必须只输出一个 JSON 对象",
+        "第一个非空字符必须是 {",
+        "输出格式示例：",
+    ):
+        index = text.find(marker)
+        if index != -1:
+            text = text[:index].strip()
+            break
+
+    return text or None
+
+
 def _extract_stream_delta_content(chunk: Any) -> str:
     choices = getattr(chunk, "choices", None)
     if not choices:
@@ -549,6 +570,66 @@ def _extract_stream_delta_content(chunk: Any) -> str:
     if content is None:
         return ""
     return str(content)
+
+
+def normalize_student_followup_answer_text(raw_content: str) -> str:
+    text = str(raw_content or "").strip()
+    if not text:
+        return ""
+
+    try:
+        parsed = _parse_json_response(text)
+    except json.JSONDecodeError:
+        return text
+
+    if not isinstance(parsed, dict):
+        return text
+    if not any(
+        key in parsed
+        for key in ("overall_assessment", "possible_issues", "next_step_checks", "encouragement_or_strategy")
+    ):
+        return text
+
+    try:
+        result = StudentHintResult.model_validate(_normalize_student_result_payload(parsed))
+    except Exception:
+        return text
+    return _render_student_followup_text(result)
+
+
+def _render_student_followup_text(result: StudentHintResult) -> str:
+    sections: list[str] = []
+    overall = result.overall_assessment.strip()
+    if overall:
+        sections.append(overall)
+
+    for issue in result.possible_issues[:2]:
+        issue_lines = [f"先盯住：{issue.title}"]
+        location = issue.location.strip()
+        if location:
+            issue_lines.append(f"位置：{location}")
+        explanation = issue.explanation.strip() or issue.evidence.strip()
+        if explanation:
+            issue_lines.append(f"为什么：{explanation}")
+        suggested_fix = issue.suggested_fix.strip()
+        if suggested_fix:
+            issue_lines.append(f"怎么检查：{suggested_fix}")
+        sections.append("\n".join(issue_lines))
+
+    if result.next_step_checks:
+        next_step_lines = ["你现在可以先做这几步："]
+        next_step_lines.extend(
+            f"{index}. {item}"
+            for index, item in enumerate(result.next_step_checks[:3], start=1)
+            if str(item).strip()
+        )
+        sections.append("\n".join(next_step_lines))
+
+    encouragement = result.encouragement_or_strategy.strip()
+    if encouragement:
+        sections.append(encouragement)
+
+    return "\n\n".join(section for section in sections if section.strip())
 
 
 def _format_followup_issues(issues: list[dict[str, Any]]) -> str:

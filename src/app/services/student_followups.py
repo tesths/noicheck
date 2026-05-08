@@ -10,6 +10,7 @@ from .ai import (
     DiagnosisServiceError,
     StudentFollowupPayload,
     StudentFollowupResponse,
+    normalize_student_followup_answer_text,
 )
 from .settings import get_active_ai_model, get_student_system_prompt
 
@@ -245,6 +246,7 @@ def record_followup_exchange(
     latency_ms: int,
 ) -> StudentFollowupResponse:
     session = preparation.session
+    normalized_assistant_content = normalize_student_followup_answer_text(assistant_content)
     if session is None:
         session = SubmissionFollowupSession(submission=submission)
         db.session.add(session)
@@ -263,7 +265,7 @@ def record_followup_exchange(
         SubmissionFollowupMessage(
             session=session,
             role="assistant",
-            content=assistant_content,
+            content=normalized_assistant_content,
             model_name=preparation.model_name,
             latency_ms=latency_ms,
         )
@@ -271,7 +273,7 @@ def record_followup_exchange(
     session.touch()
     db.session.commit()
     return StudentFollowupResponse(
-        answer_text=assistant_content,
+        answer_text=normalized_assistant_content,
         raw_content=assistant_content,
         latency_ms=latency_ms,
         model_name=preparation.model_name,
