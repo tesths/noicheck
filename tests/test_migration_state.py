@@ -86,3 +86,77 @@ def test_submission_request_token_migration_skips_existing_column(tmp_path):
 
     indexes = {index["name"] for index in inspect(engine).get_indexes("submissions")}
     assert "ix_submissions_request_token" in indexes
+
+
+def test_submission_followup_migration_skips_existing_tables(tmp_path):
+    database_path = tmp_path / "migration-existing-followups.db"
+    engine = create_engine(f"sqlite:///{database_path}")
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "migrations"
+        / "versions"
+        / "6b6f0d3c2a11_submission_followups.py"
+    )
+    spec = spec_from_file_location("migration_submission_followups", migration_path)
+    assert spec is not None and spec.loader is not None
+    migration_module = module_from_spec(spec)
+    spec.loader.exec_module(migration_module)
+
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE submissions ("
+                "id INTEGER NOT NULL PRIMARY KEY"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE submission_followup_sessions ("
+                "id INTEGER NOT NULL PRIMARY KEY, "
+                "submission_id INTEGER NOT NULL, "
+                "created_at DATETIME NOT NULL, "
+                "updated_at DATETIME NOT NULL"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE UNIQUE INDEX ix_submission_followup_sessions_submission_id "
+                "ON submission_followup_sessions (submission_id)"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE TABLE submission_followup_messages ("
+                "id INTEGER NOT NULL PRIMARY KEY, "
+                "session_id INTEGER NOT NULL, "
+                "role VARCHAR(16) NOT NULL, "
+                "content TEXT NOT NULL, "
+                "context_label VARCHAR(80), "
+                "context_text TEXT, "
+                "model_name VARCHAR(100), "
+                "latency_ms INTEGER, "
+                "created_at DATETIME NOT NULL"
+                ")"
+            )
+        )
+        connection.execute(
+            text(
+                "CREATE INDEX ix_submission_followup_messages_session_id "
+                "ON submission_followup_messages (session_id)"
+            )
+        )
+
+        context = MigrationContext.configure(connection)
+        operations = Operations(context)
+        original_op = migration_module.op
+        migration_module.op = operations
+        try:
+            migration_module.upgrade()
+        finally:
+            migration_module.op = original_op
+
+    inspector = inspect(engine)
+    assert "submission_followup_sessions" in inspector.get_table_names()
+    assert "submission_followup_messages" in inspector.get_table_names()
