@@ -68,18 +68,6 @@
 
       <article class="panel">
         <p class="eyebrow">学生代码</p>
-        {% if has_followup_drawer and not is_admin_preview %}
-          <div class="followup-action-row">
-            <button
-              class="ghost-button mini-button js-followup-context"
-              type="button"
-              data-context-label="学生代码"
-              data-context-text="{{ submission.code_text }}"
-            >
-              引用这段代码追问
-            </button>
-          </div>
-        {% endif %}
         <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
       </article>
 
@@ -95,18 +83,6 @@
                 <p class="eyebrow">提示摘要</p>
                 <h2>{{ result.overall_assessment }}</h2>
                 <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
-                {% if not is_admin_preview %}
-                  <div class="followup-action-row">
-                    <button
-                      class="ghost-button mini-button js-followup-context"
-                      type="button"
-                      data-context-label="提示摘要"
-                      data-context-text="{{ result.overall_assessment }}"
-                    >
-                      追问这一句
-                    </button>
-                  </div>
-                {% endif %}
               </div>
               {% if result.possible_issues %}
                 {% for issue in result.possible_issues %}
@@ -116,18 +92,6 @@
                     <p><strong>证据：</strong>{{ issue.evidence }}</p>
                     <p><strong>说明：</strong>{{ issue.explanation }}</p>
                     <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
-                    {% if not is_admin_preview %}
-                      <div class="followup-action-row">
-                        <button
-                          class="ghost-button mini-button js-followup-context"
-                          type="button"
-                          data-context-label="第 {{ loop.index }} 条提示"
-                          data-context-text="标题：{{ issue.title }}&#10;可能位置：{{ issue.location or '请重点检查相关逻辑块。' }}&#10;证据：{{ issue.evidence }}&#10;说明：{{ issue.explanation }}&#10;建议：{{ issue.suggested_fix }}"
-                        >
-                          追问这一条
-                        </button>
-                      </div>
-                    {% endif %}
                   </section>
                 {% endfor %}
               {% endif %}
@@ -189,7 +153,7 @@
             {% if is_admin_preview %}
               这里是学生端追问抽屉的只读预览。老师可以查看学生卡住的具体位置。
             {% else %}
-              如果哪一句提示、哪一段代码还是看不懂，可以继续问。回答会更直接一点，但仍不会直接给完整答案。
+              如果还有没想通的地方，直接输入问题继续问。回答会更直接一点，但仍不会直接给完整答案。
             {% endif %}
           </p>
         {% elif submission.student_hint_status in ["queued", "running"] %}
@@ -210,24 +174,6 @@
         </section>
 
         {% if followup_enabled and not is_admin_preview %}
-          <div class="followup-quick-actions">
-            <button
-              class="ghost-button mini-button js-followup-context"
-              type="button"
-              data-context-label="提示摘要"
-              data-context-text="{{ submission.latest_student_hint_run.structured_result_json.overall_assessment }}"
-            >
-              引用提示摘要
-            </button>
-            <button
-              class="ghost-button mini-button js-followup-context"
-              type="button"
-              data-context-label="下一步检查"
-              data-context-text="{% for item in submission.latest_student_hint_run.structured_result_json.next_step_checks %}{{ item }}{% if not loop.last %}&#10;{% endif %}{% endfor %}"
-            >
-              引用下一步检查
-            </button>
-          </div>
           <form
             class="form-panel followup-form"
             id="followup-form"
@@ -238,14 +184,6 @@
             <div class="field">
               <span>这次想问什么</span>
               <textarea name="question_text" rows="5" placeholder="比如：为什么这里会漏掉最后一个字符？">{{ followup_form_data.question_text if followup_form_data else "" }}</textarea>
-            </div>
-            <div class="field">
-              <span>引用标题（可选）</span>
-              <input type="text" name="context_label" value="{{ followup_form_data.context_label if followup_form_data else "" }}" placeholder="比如：第 1 条提示 / 学生代码">
-            </div>
-            <div class="field">
-              <span>引用的具体内容（可选）</span>
-              <textarea name="context_text" rows="6" placeholder="如果想追问某一句提示或某一段代码，可以贴在这里。">{{ followup_form_data.context_text if followup_form_data else "" }}</textarea>
             </div>
             <button class="primary-button" type="submit" data-submitting-text="继续思考中，请稍候…">发送追问</button>
           </form>
@@ -388,7 +326,7 @@
         return thread;
       }
 
-      function createFollowupMessage(role, content, contextLabel, contextText) {
+      function createFollowupMessage(role, content) {
         const article = document.createElement("article");
         article.className = "followup-message followup-message-" + role;
 
@@ -402,30 +340,13 @@
         body.textContent = content;
         article.appendChild(body);
 
-        if (contextText) {
-          const context = document.createElement("section");
-          context.className = "followup-context";
-
-          const contextTitle = document.createElement("p");
-          contextTitle.className = "followup-context-label";
-          contextTitle.textContent = "引用：" + (contextLabel || "补充上下文");
-          context.appendChild(contextTitle);
-
-          const contextPre = document.createElement("pre");
-          contextPre.className = "inline-pre";
-          contextPre.textContent = contextText;
-          context.appendChild(contextPre);
-
-          article.appendChild(context);
-        }
-
         return { article: article, body: body };
       }
 
-      function appendPendingExchange(messagesContainer, questionText, contextLabel, contextText) {
+      function appendPendingExchange(messagesContainer, questionText) {
         const thread = ensureFollowupThread(messagesContainer);
-        const studentMessage = createFollowupMessage("student", questionText, contextLabel, contextText);
-        const assistantMessage = createFollowupMessage("assistant", "", "", "");
+        const studentMessage = createFollowupMessage("student", questionText);
+        const assistantMessage = createFollowupMessage("assistant", "");
         thread.appendChild(studentMessage.article);
         thread.appendChild(assistantMessage.article);
         scrollFollowupThreadToBottom();
@@ -475,27 +396,6 @@
         }
       });
 
-      document.addEventListener("click", function (event) {
-        const button = event.target.closest(".js-followup-context");
-        if (!button) {
-          return;
-        }
-
-        openFollowupDrawer();
-        const labelField = document.querySelector('input[name="context_label"]');
-        const textField = document.querySelector('textarea[name="context_text"]');
-        const questionField = document.querySelector('textarea[name="question_text"]');
-        if (!(labelField instanceof HTMLInputElement) || !(textField instanceof HTMLTextAreaElement)) {
-          return;
-        }
-
-        labelField.value = button.dataset.contextLabel || "";
-        textField.value = button.dataset.contextText || "";
-        if (questionField instanceof HTMLTextAreaElement) {
-          questionField.focus();
-        }
-      });
-
       const form = document.getElementById("followup-form");
       const messagesContainer = document.getElementById("followup-messages");
       const inlineError = document.getElementById("followup-inline-error");
@@ -527,9 +427,7 @@
             const formData = new FormData(form);
             const assistantBody = appendPendingExchange(
               messagesContainer,
-              String(formData.get("question_text") || ""),
-              String(formData.get("context_label") || ""),
-              String(formData.get("context_text") || "")
+              String(formData.get("question_text") || "")
             );
             const response = await fetch(form.action, {
               method: "POST",

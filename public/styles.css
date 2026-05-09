@@ -725,14 +725,6 @@ th {
   border-top: 1px solid rgba(74, 50, 35, 0.08);
 }
 
-.followup-quick-actions,
-.followup-action-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-
 .followup-form textarea {
   min-height: 120px;
 }

@@ -890,11 +890,7 @@ def test_student_can_submit_followup_and_persist_messages(app, client, monkeypat
     _login_student(client, "owner", "pw-1")
     response = client.post(
         f"/student/submissions/{public_id}/follow-ups",
-        data={
-            "question_text": "为什么会漏掉最后一个字符？",
-            "context_label": "提示摘要",
-            "context_text": "先检查循环边界。",
-        },
+        data={"question_text": "为什么会漏掉最后一个字符？"},
         follow_redirects=True,
     )
 
@@ -903,6 +899,10 @@ def test_student_can_submit_followup_and_persist_messages(app, client, monkeypat
     assert "最后一个字符有没有进入判断".encode() in response.data
     assert 'data-followup-open="true"'.encode() in response.data
     assert 'data-followup-toggle'.encode() in response.data
+    assert "引用这段代码追问".encode() not in response.data
+    assert "引用提示摘要".encode() not in response.data
+    assert 'name="context_label"'.encode() not in response.data
+    assert 'name="context_text"'.encode() not in response.data
 
     with app.app_context():
         session = SubmissionFollowupSession.query.one()
@@ -911,8 +911,8 @@ def test_student_can_submit_followup_and_persist_messages(app, client, monkeypat
         assert session.submission_id == Submission.query.filter_by(public_id=public_id).one().id
         assert len(messages) == 2
         assert messages[0].role == "student"
-        assert messages[0].context_label == "提示摘要"
-        assert messages[0].context_text == "先检查循环边界。"
+        assert messages[0].context_label is None
+        assert messages[0].context_text is None
         assert messages[1].role == "assistant"
         assert messages[1].model_name == "deepseek-v4-pro"
         assert messages[1].latency_ms == 66
@@ -1094,11 +1094,7 @@ def test_student_followup_streams_sse_for_chat_ui(app, client, monkeypatch):
     _login_student(client, "owner", "pw-1")
     response = client.post(
         f"/student/submissions/{public_id}/follow-ups",
-        data={
-            "question_text": "为什么这里会漏掉最后一个字符？",
-            "context_label": "提示摘要",
-            "context_text": "先检查循环边界。",
-        },
+        data={"question_text": "为什么这里会漏掉最后一个字符？"},
         headers={"Accept": "text/event-stream", "X-Requested-With": "fetch"},
         follow_redirects=False,
     )
