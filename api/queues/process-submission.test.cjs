@@ -108,3 +108,70 @@ test("process-submission reads raw request stream when req.body is undefined", a
   assert.equal(res.statusCode, 200);
   assert.deepEqual(forwardedPayload, rawPayload);
 });
+
+test("process-submission fetches queue payload from cloud event headers when body is missing", async () => {
+  const fetchCalls = [];
+  global.fetch = async (url, options = {}) => {
+    fetchCalls.push({ url, options });
+    if (fetchCalls.length === 1) {
+      return {
+        ok: true,
+        headers: new Headers({
+          "content-type": 'multipart/mixed; boundary="test-boundary"',
+        }),
+        text: async () =>
+          [
+            "--test-boundary",
+            "Content-Type: application/json",
+            "Vqs-Message-Id: msg-1",
+            "",
+            '{"job_type":"fetch-problem","submission_public_id":"cloud123","requested_by":"queue"}',
+            "--test-boundary--",
+            "",
+          ].join("\r\n"),
+      };
+    }
+    return {
+      ok: true,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ status: "success" }),
+    };
+  };
+
+  process.env.APP_BASE_URL = "https://example.com";
+  process.env.INTERNAL_JOB_TOKEN = "test-token";
+  process.env.VERCEL_DEPLOYMENT_ID = "dpl_test";
+
+  const req = {
+    method: "POST",
+    body: undefined,
+    headers: {
+      "ce-type": "com.vercel.queue.v2beta",
+      "ce-vqsqueuename": "noi_submission_jobs",
+      "ce-vqsconsumergroup": "api/queues/process-submission.js",
+      "ce-vqsmessageid": "msg-1",
+      "ce-vqsregion": "iad1",
+      "x-vercel-oidc-token": "oidc-token",
+    },
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(fetchCalls.length, 2);
+  assert.equal(
+    fetchCalls[0].url,
+    "https://iad1.vercel-queue.com/api/v3/topic/noi_submission_jobs/consumer/api%2Fqueues%2Fprocess-submission.js/id/msg-1",
+  );
+  assert.equal(fetchCalls[0].options.headers.Authorization, "Bearer oidc-token");
+  assert.equal(fetchCalls[0].options.headers["Vqs-Deployment-Id"], "dpl_test");
+  assert.deepEqual(
+    JSON.parse(String(fetchCalls[1].options.body)),
+    {
+      job_type: "fetch-problem",
+      submission_public_id: "cloud123",
+      requested_by: "queue",
+    },
+  );
+});
