@@ -13,19 +13,80 @@ function resolveBaseUrl() {
 }
 
 function normalizePayload(body) {
-  if (!body || typeof body !== "object") {
+  if (!body) {
+    return null;
+  }
+  if (typeof body === "string") {
+    const parsed = parseJsonString(body);
+    return parsed === null ? null : normalizePayload(parsed);
+  }
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    return normalizePayload(Buffer.from(body).toString("utf8"));
+  }
+  if (body instanceof ArrayBuffer) {
+    return normalizePayload(Buffer.from(body).toString("utf8"));
+  }
+  if (typeof body !== "object") {
     return null;
   }
   if (body.job_type && body.submission_public_id) {
     return body;
   }
-  if (body.message && typeof body.message === "object") {
-    return normalizePayload(body.message);
-  }
-  if (body.body && typeof body.body === "object") {
-    return normalizePayload(body.body);
+
+  for (const key of ["message", "body", "payload", "data"]) {
+    if (key in body) {
+      const nested = normalizePayload(body[key]);
+      if (nested) {
+        return nested;
+      }
+    }
   }
   return null;
+}
+
+function parseJsonString(value) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function describePayload(body) {
+  if (body === null || body === undefined) {
+    return { type: String(body) };
+  }
+  if (typeof body === "string") {
+    return {
+      type: "string",
+      preview: body.slice(0, 200),
+    };
+  }
+  if (Buffer.isBuffer(body) || body instanceof Uint8Array) {
+    return {
+      type: body.constructor?.name || "Uint8Array",
+      byteLength: body.byteLength,
+      preview: Buffer.from(body).toString("utf8", 0, 200),
+    };
+  }
+  if (body instanceof ArrayBuffer) {
+    return {
+      type: "ArrayBuffer",
+      byteLength: body.byteLength,
+      preview: Buffer.from(body).toString("utf8", 0, 200),
+    };
+  }
+  if (typeof body === "object") {
+    return {
+      type: "object",
+      keys: Object.keys(body).slice(0, 20),
+    };
+  }
+  return { type: typeof body };
 }
 
 module.exports = async (req, res) => {
@@ -36,6 +97,7 @@ module.exports = async (req, res) => {
 
   const payload = normalizePayload(req.body);
   if (!payload) {
+    console.error("Queue consumer received unsupported payload shape", describePayload(req.body));
     return res.status(400).json({ ok: false, error: "invalid_payload" });
   }
 
