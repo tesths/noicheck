@@ -1,6 +1,6 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-05-08
+更新时间：2026-05-09
 
 ## 1. 项目目标
 
@@ -36,6 +36,7 @@
 - 教师后台从筛选列表进入提交详情后，返回列表会保留当前筛选或分页上下文。
 - 教师后台支持软删除提交记录，删除后学生端、教师端和后台任务都会忽略该记录。
 - 抓题和 AI 任务继续走异步队列。
+- Queue consumer 已兼容 Vercel Queue 的 3 种回调形态：解析后的 body、原始请求流、以及仅带 `ce-vqs*` 头并需按 `messageId` 回拉 payload 的 CloudEvent 回调。
 - AI 配置已兼容 `AI_*` 与旧 `DEEPSEEK_*` 变量，可切换 OpenRouter。
 - 当前稳定策略以“正常使用优先”为主：先保证模型按 JSON 契约输出，并在解析层兼容少量脏格式返回。
 - 生产迁移已补齐旧库幂等处理：`request_token` 列、追问表结构、Alembic 基线补写和历史追问清洗都能重复执行。
@@ -70,6 +71,12 @@
 - 线上队列：Vercel Queues
 - Queue consumer：`api/queues/process-submission.js`
 - Python 任务处理：`src/app/services/jobs.py`
+
+当前 queue consumer 处理顺序：
+
+1. 优先使用 `req.body`
+2. 如果 `req.body` 为空，则读取原始请求流
+3. 如果 body 仍为空，但存在 `ce-vqs*` 头，则使用 `messageId` 回调 Vercel Queue API 拉取真实 payload
 
 当前存在两类主要 AI 任务链路：
 
@@ -355,6 +362,7 @@
 - 当前学生账号由教师后台创建，不依赖额外环境变量。
 - 线上数据库仍然必须使用 Postgres。
 - `APP_BASE_URL` 需要指向正式站点地址。
+- 线上 Queue callback 优先依赖请求头里的 `x-vercel-oidc-token` 回拉消息；仅在本地联调真实 Queue 或脱离 Vercel 环境时，才需要显式提供 `VERCEL_OIDC_TOKEN`。
 - 若线上仍保留旧变量名，系统会继续兼容读取 `DEEPSEEK_*`。
 - 当前默认不启用额外的 OpenRouter 速度调优参数，优先保证返回内容稳定可解析。
 - `scripts/prod-db-migrate.sh` 在 `db upgrade` 后会自动执行 `uv run flask clean-followup-history`。
@@ -365,6 +373,8 @@
 目前还需要继续留意这些点：
 
 - 线上 Queue trigger 仍需继续观察稳定性。
+- 若再次出现 `Queue consumer received unsupported payload shape ...`，说明 consumer 既没拿到 body，也没识别出 Queue CloudEvent 元数据。
+- 若出现 `queue_message_fetch_failed`，说明 body 识别层已通过，应继续检查 OIDC token、region、deployment id 或 Queue API 返回。
 - OpenJudge 抓题稳定性仍依赖站点可访问性。
 - 学生版 AI 目前是静态代码提示，不是真实编译执行判题。
 - 模型即使已被要求只输出 JSON，仍可能偶发偏离格式；当前系统已做解析容错，但仍应继续观察线上日志。

@@ -31,6 +31,7 @@
 - 学生端与教师端 AI 结果分流
 - 提交记录软删除
 - OpenJudge 抓题与 AI 诊断异步处理
+- Queue consumer 已兼容解析对象 body、原始请求流，以及仅带 `ce-vqs*` 头的 CloudEvent 回调
 
 ## 目录结构
 
@@ -197,6 +198,22 @@ uv run pytest tests/test_admin_submission_management.py -q
 
 - AI 配置支持新变量名 `AI_*`
 - 也兼容旧变量名 `DEEPSEEK_*`
+- 线上 Queue callback 优先使用请求头里的 `x-vercel-oidc-token` 回拉消息；仅本地联调或脱离 Vercel 环境复现时，才需要额外提供 `VERCEL_OIDC_TOKEN`
+
+## Queue Consumer 说明
+
+当前 `api/queues/process-submission.js` 会按下面顺序解析消息：
+
+1. 直接读取 `req.body`
+2. 如果 `req.body` 为空，再读原始请求流
+3. 如果 body 仍为空，但存在 `ce-vqs*` CloudEvent 头，则按 `messageId` 回拉 Vercel Queue payload
+
+线上排错时可以先看这两个信号：
+
+- `Queue consumer received unsupported payload shape ...`
+  说明 consumer 既没拿到 body，也没识别出可回拉的 Queue callback 元数据
+- `queue_message_fetch_failed`
+  说明已经识别出 Queue CloudEvent，但回拉 Vercel Queue API 失败，应继续检查 OIDC token、region、deployment id 或 Queue API 响应
 
 ## 线上回归建议
 
