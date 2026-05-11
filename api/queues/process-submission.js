@@ -93,6 +93,9 @@ function getHeader(headers, name) {
   if (!headers || typeof headers !== "object") {
     return null;
   }
+  if (typeof headers.get === "function") {
+    return headers.get(name);
+  }
   const target = name.toLowerCase();
   for (const [key, value] of Object.entries(headers)) {
     if (String(key).toLowerCase() !== target) {

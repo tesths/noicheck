@@ -175,3 +175,63 @@ test("process-submission fetches queue payload from cloud event headers when bod
     },
   );
 });
+
+test("process-submission reads cloud event metadata from Headers instances", async () => {
+  const fetchCalls = [];
+  global.fetch = async (url, options = {}) => {
+    fetchCalls.push({ url, options });
+    if (fetchCalls.length === 1) {
+      return {
+        ok: true,
+        headers: new Headers({
+          "content-type": 'multipart/mixed; boundary="test-boundary"',
+        }),
+        text: async () =>
+          [
+            "--test-boundary",
+            "Content-Type: application/json",
+            "Vqs-Message-Id: msg-headers",
+            "",
+            '{"job_type":"fetch-problem","submission_public_id":"headers123"}',
+            "--test-boundary--",
+            "",
+          ].join("\r\n"),
+      };
+    }
+    return {
+      ok: true,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ status: "success" }),
+    };
+  };
+
+  process.env.APP_BASE_URL = "https://example.com";
+  process.env.INTERNAL_JOB_TOKEN = "test-token";
+  process.env.VERCEL_DEPLOYMENT_ID = "dpl_test";
+
+  const req = {
+    method: "POST",
+    body: undefined,
+    headers: new Headers({
+      "ce-type": "com.vercel.queue.v2beta",
+      "ce-vqsqueuename": "noi_submission_jobs",
+      "ce-vqsconsumergroup": "api/queues/process-submission.js",
+      "ce-vqsmessageid": "msg-headers",
+      "ce-vqsregion": "iad1",
+      "x-vercel-oidc-token": "oidc-token",
+    }),
+  };
+  const res = createResponse();
+
+  await handler(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(fetchCalls.length, 2);
+  assert.deepEqual(
+    JSON.parse(String(fetchCalls[1].options.body)),
+    {
+      job_type: "fetch-problem",
+      submission_public_id: "headers123",
+    },
+  );
+});
