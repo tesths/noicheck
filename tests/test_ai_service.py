@@ -108,6 +108,42 @@ def test_deepseek_service_uses_custom_teacher_system_prompt():
     assert "题目描述" in call["messages"][1]["content"]
 
 
+@pytest.mark.parametrize("audience", ["teacher", "student"])
+def test_deepseek_service_caps_total_prompt_payload_size(audience):
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=FakeClient(),
+        max_prompt_chars=120,
+    )
+    payload = DiagnosisPayload(
+        student_name="小明",
+        problem_url="https://noi.openjudge.cn/ch0107/01/",
+        problem_title="01:统计数字字符个数",
+        description_text="A" * 200,
+        input_text="B" * 200,
+        output_text="C" * 200,
+        sample_input_text="D" * 200,
+        sample_output_text="E" * 200,
+        code_text="F" * 200,
+    )
+
+    prompt = service._build_user_prompt(payload, audience=audience)
+
+    dynamic_char_count = (
+        prompt.count("A")
+        + prompt.count("B")
+        + max(prompt.count("C") - 2, 0)
+        + prompt.count("D")
+        + prompt.count("E")
+        + prompt.count("F")
+    )
+    assert dynamic_char_count <= 120
+    assert "题目链接" in prompt
+    assert "程序：" in prompt
+
+
 def test_deepseek_service_accepts_loose_chinese_json_shape():
     client = FakeClient()
     client.chat.completions.create = lambda **kwargs: SimpleNamespace(

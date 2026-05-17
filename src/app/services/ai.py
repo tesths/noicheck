@@ -322,12 +322,23 @@ class DeepSeekDiagnosisService:
         )
 
     def _build_user_prompt(self, payload: DiagnosisPayload, *, audience: str) -> str:
-        description_text = _truncate_text(payload.description_text or "未抓取到", self.max_prompt_chars)
-        input_text = _truncate_text(payload.input_text or "未抓取到", self.max_prompt_chars)
-        output_text = _truncate_text(payload.output_text or "未抓取到", self.max_prompt_chars)
-        sample_input_text = _truncate_text(payload.sample_input_text or "未抓取到", self.max_prompt_chars)
-        sample_output_text = _truncate_text(payload.sample_output_text or "未抓取到", self.max_prompt_chars)
-        code_text = _truncate_text(payload.code_text, self.max_prompt_chars)
+        prompt_sections = _truncate_prompt_sections(
+            [
+                ("description_text", payload.description_text or "未抓取到", 2),
+                ("input_text", payload.input_text or "未抓取到", 1),
+                ("output_text", payload.output_text or "未抓取到", 1),
+                ("sample_input_text", payload.sample_input_text or "未抓取到", 1),
+                ("sample_output_text", payload.sample_output_text or "未抓取到", 1),
+                ("code_text", payload.code_text, 4),
+            ],
+            self.max_prompt_chars,
+        )
+        description_text = prompt_sections["description_text"]
+        input_text = prompt_sections["input_text"]
+        output_text = prompt_sections["output_text"]
+        sample_input_text = prompt_sections["sample_input_text"]
+        sample_output_text = prompt_sections["sample_output_text"]
+        code_text = prompt_sections["code_text"]
         if audience == "student":
             return "\n\n".join(
                 [
@@ -427,6 +438,47 @@ def _truncate_text(text: str, max_chars: int) -> str:
     if max_chars <= 0 or len(text) <= max_chars:
         return text
     return text[:max_chars]
+
+
+def _truncate_prompt_sections(
+    sections: list[tuple[str, str, int]],
+    max_chars: int,
+) -> dict[str, str]:
+    normalized_sections = [(name, str(text), max(weight, 1)) for name, text, weight in sections]
+    if max_chars <= 0:
+        return {name: text for name, text, _ in normalized_sections}
+
+    total_chars = sum(len(text) for _, text, _ in normalized_sections)
+    if total_chars <= max_chars:
+        return {name: text for name, text, _ in normalized_sections}
+
+    total_weight = sum(weight for _, _, weight in normalized_sections)
+    budgets: dict[str, int] = {}
+    remainders: list[tuple[float, str]] = []
+    remaining_budget = max_chars
+
+    for name, text, weight in normalized_sections:
+        raw_budget = max_chars * weight / total_weight
+        allocated = min(len(text), int(raw_budget))
+        budgets[name] = allocated
+        remaining_budget -= allocated
+        remainders.append((raw_budget - int(raw_budget), name))
+
+    if remaining_budget > 0:
+        for _, name in sorted(remainders, reverse=True):
+            current = budgets[name]
+            text_length = next(len(text) for section_name, text, _ in normalized_sections if section_name == name)
+            if current >= text_length:
+                continue
+            budgets[name] += 1
+            remaining_budget -= 1
+            if remaining_budget == 0:
+                break
+
+    return {
+        name: _truncate_text(text, budgets[name])
+        for name, text, _ in normalized_sections
+    }
 
 
 def _is_retryable_ai_error(exc: Exception) -> bool:
