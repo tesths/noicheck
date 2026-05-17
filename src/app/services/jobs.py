@@ -2,7 +2,7 @@ import hashlib
 import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
@@ -29,6 +29,10 @@ PROCESSING_DIAGNOSIS_STATUSES = {"queued", "running"}
 _FETCH_SEMAPHORE = BoundedSemaphore(8)
 _TEACHER_AI_SEMAPHORE = BoundedSemaphore(4)
 _STUDENT_AI_SEMAPHORE = BoundedSemaphore(8)
+_PROBLEM_URL_LOCKS: dict[str, Lock] = {}
+_PROBLEM_URL_LOCKS_GUARD = Lock()
+_PROBLEM_SNAPSHOT_MEMORY_CACHE: dict[str, tuple[float, dict[str, str | None]]] = {}
+_PROBLEM_SNAPSHOT_MEMORY_CACHE_GUARD = Lock()
 setattr(_FETCH_SEMAPHORE, "_initial_value", 8)
 setattr(_TEACHER_AI_SEMAPHORE, "_initial_value", 4)
 setattr(_STUDENT_AI_SEMAPHORE, "_initial_value", 8)
@@ -366,22 +370,21 @@ def _sync_problem_snapshot(submission: Submission) -> str:
     fetcher = OpenJudgeProblemFetcher(timeout=float(current_app.config.get("OPENJUDGE_REQUEST_TIMEOUT", 10)))
     snapshot = submission.problem_snapshot
     try:
-        cached_snapshot = _load_cached_problem_snapshot(submission.problem_url)
+        normalized_url = normalize_openjudge_url(submission.problem_url)
+        cached_snapshot = _load_cached_problem_snapshot(normalized_url)
         if cached_snapshot is not None:
-            submission.problem_url = cached_snapshot["normalized_url"]
-            submission.problem_path = cached_snapshot["problem_path"]
-            submission.problem_title = cached_snapshot["title"]
-            submission.fetch_status = "success"
-            if snapshot is None:
-                snapshot = ProblemSnapshot(submission=submission, normalized_url=cached_snapshot["normalized_url"])
-                db.session.add(snapshot)
-            _apply_problem_snapshot(snapshot, cached_snapshot)
-            snapshot.fetch_error = None
-            db.session.commit()
+            _restore_snapshot_from_cache(submission, snapshot, cached_snapshot)
             return "success"
 
-        with _fetch_semaphore():
-            problem = fetcher.fetch(submission.problem_url)
+        with _problem_url_lock(normalized_url):
+            db.session.rollback()
+            cached_snapshot = _load_cached_problem_snapshot(normalized_url)
+            if cached_snapshot is not None:
+                _restore_snapshot_from_cache(submission, snapshot, cached_snapshot)
+                return "success"
+
+            with _fetch_semaphore():
+                problem = fetcher.fetch(normalized_url)
         submission.problem_url = problem.normalized_url
         submission.problem_path = problem.problem_path
         submission.problem_title = problem.title
@@ -391,6 +394,21 @@ def _sync_problem_snapshot(submission: Submission) -> str:
             db.session.add(snapshot)
         _apply_problem_snapshot(
             snapshot,
+            {
+                "normalized_url": problem.normalized_url,
+                "problem_path": problem.problem_path,
+                "title": problem.title,
+                "description_text": problem.description_text,
+                "input_text": problem.input_text,
+                "output_text": problem.output_text,
+                "sample_input_text": problem.sample_input_text,
+                "sample_output_text": problem.sample_output_text,
+                "source_text": problem.source_text,
+                "raw_excerpt": problem.raw_excerpt,
+            },
+        )
+        _store_problem_snapshot_cache(
+            problem.normalized_url,
             {
                 "normalized_url": problem.normalized_url,
                 "problem_path": problem.problem_path,
@@ -478,10 +496,10 @@ def _apply_problem_snapshot(snapshot: ProblemSnapshot, data: dict[str, str | Non
 def _load_cached_problem_snapshot(problem_url: str) -> dict[str, str | None] | None:
     if not current_app.config.get("PROBLEM_SNAPSHOT_CACHE_ENABLED", True):
         return None
-    try:
-        normalized_url = normalize_openjudge_url(problem_url)
-    except ProblemFetchError:
-        return None
+    normalized_url = problem_url
+    memory_cached = _load_problem_snapshot_from_memory_cache(normalized_url)
+    if memory_cached is not None:
+        return memory_cached
 
     ttl_seconds = int(current_app.config.get("PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS", 86400))
     cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
@@ -500,7 +518,7 @@ def _load_cached_problem_snapshot(problem_url: str) -> dict[str, str | None] | N
         return None
 
     cached_snapshot = cached_submission.problem_snapshot
-    return {
+    payload = {
         "normalized_url": cached_snapshot.normalized_url,
         "problem_path": cached_submission.problem_path,
         "title": cached_snapshot.title,
@@ -512,6 +530,55 @@ def _load_cached_problem_snapshot(problem_url: str) -> dict[str, str | None] | N
         "source_text": cached_snapshot.source_text,
         "raw_excerpt": cached_snapshot.raw_excerpt,
     }
+    _store_problem_snapshot_cache(normalized_url, payload)
+    return payload
+
+
+def _restore_snapshot_from_cache(
+    submission: Submission,
+    snapshot: ProblemSnapshot | None,
+    cached_snapshot: dict[str, str | None],
+) -> None:
+    submission.problem_url = cached_snapshot["normalized_url"]
+    submission.problem_path = cached_snapshot["problem_path"]
+    submission.problem_title = cached_snapshot["title"]
+    submission.fetch_status = "success"
+    if snapshot is None:
+        snapshot = ProblemSnapshot(submission=submission, normalized_url=cached_snapshot["normalized_url"])
+        db.session.add(snapshot)
+    _apply_problem_snapshot(snapshot, cached_snapshot)
+    snapshot.fetch_error = None
+    db.session.commit()
+
+
+def _load_problem_snapshot_from_memory_cache(normalized_url: str) -> dict[str, str | None] | None:
+    ttl_seconds = int(current_app.config.get("PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS", 86400))
+    cutoff = time.time() - ttl_seconds
+    with _PROBLEM_SNAPSHOT_MEMORY_CACHE_GUARD:
+        cached = _PROBLEM_SNAPSHOT_MEMORY_CACHE.get(normalized_url)
+        if cached is None:
+            return None
+        stored_at, payload = cached
+        if stored_at < cutoff:
+            _PROBLEM_SNAPSHOT_MEMORY_CACHE.pop(normalized_url, None)
+            return None
+        return payload.copy()
+
+
+def _store_problem_snapshot_cache(normalized_url: str, payload: dict[str, str | None]) -> None:
+    with _PROBLEM_SNAPSHOT_MEMORY_CACHE_GUARD:
+        _PROBLEM_SNAPSHOT_MEMORY_CACHE[normalized_url] = (time.time(), payload.copy())
+
+
+@contextmanager
+def _problem_url_lock(normalized_url: str):
+    with _PROBLEM_URL_LOCKS_GUARD:
+        lock = _PROBLEM_URL_LOCKS.setdefault(normalized_url, Lock())
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 @contextmanager

@@ -1,10 +1,18 @@
 from src.app.extensions import db
 from src.app.models import AdminUser, Submission
+from src.app import create_app
 from src.app.services.ai import DiagnosisPayload, DiagnosisResponse
 from src.app.services.problem_fetcher import ProblemContent, ProblemFetchError
 from src.app.schemas import DiagnosisResult
 from src.app.services.auth import hash_password
 from src.app.services.job_queue import JobQueueError
+import threading
+
+
+def _clear_problem_snapshot_memory_cache() -> None:
+    import src.app.services.jobs as jobs_module
+
+    jobs_module._PROBLEM_SNAPSHOT_MEMORY_CACHE.clear()
 
 
 def _auth_headers() -> dict[str, str]:
@@ -45,6 +53,7 @@ def test_internal_job_endpoint_requires_token(client):
 
 
 def test_internal_job_endpoint_processes_fetch_problem_job(app, client, monkeypatch):
+    _clear_problem_snapshot_memory_cache()
     def fake_fetch(self, url):
         return ProblemContent(
             normalized_url="http://noi.openjudge.cn/ch0107/01/",
@@ -89,6 +98,7 @@ def test_internal_job_endpoint_processes_fetch_problem_job(app, client, monkeypa
 
 
 def test_internal_job_endpoint_processes_combined_job(app, client, monkeypatch):
+    _clear_problem_snapshot_memory_cache()
     def fake_fetch(self, url):
         return ProblemContent(
             normalized_url="http://noi.openjudge.cn/ch0107/01/",
@@ -140,6 +150,7 @@ def test_internal_job_endpoint_processes_combined_job(app, client, monkeypatch):
 
 
 def test_internal_job_endpoint_marks_failure_when_fetch_fails(app, client, monkeypatch):
+    _clear_problem_snapshot_memory_cache()
     def fake_fetch(self, url):
         raise ProblemFetchError("OpenJudge 暂时无法访问。")
 
@@ -197,6 +208,7 @@ def test_internal_job_endpoint_returns_controlled_error_for_unexpected_exception
 
 
 def test_process_diagnosis_job_reuses_existing_problem_snapshot(app, monkeypatch):
+    _clear_problem_snapshot_memory_cache()
     fetch_calls = []
 
     def fake_fetch(self, url):
@@ -257,3 +269,99 @@ def test_process_job_message_raises_job_queue_error_for_unknown_job_type():
         assert "未知任务类型" in str(exc)
     else:
         raise AssertionError("expected JobQueueError")
+
+
+def test_process_diagnosis_job_avoids_duplicate_fetch_under_concurrency(tmp_path, monkeypatch):
+    _clear_problem_snapshot_memory_cache()
+    fetch_calls = []
+    lock = threading.Lock()
+
+    class ConcurrentConfig:
+        TESTING = True
+        SECRET_KEY = "test-secret"
+        SQLALCHEMY_DATABASE_URI = f"sqlite:///{tmp_path / 'concurrent.db'}"
+        SQLALCHEMY_TRACK_MODIFICATIONS = False
+        SQLALCHEMY_ENGINE_OPTIONS = {"connect_args": {"timeout": 30, "check_same_thread": False}}
+        WTF_CSRF_ENABLED = False
+        SESSION_COOKIE_SECURE = False
+        REMEMBER_COOKIE_SECURE = False
+        DEEPSEEK_API_KEY = "test-key"
+        DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+        DEEPSEEK_MODEL = "deepseek-chat"
+        ADMIN_INIT_USERNAME = ""
+        ADMIN_INIT_PASSWORD = ""
+        BOOTSTRAP_ON_STARTUP = False
+        REQUIRE_PRODUCTION_ENV = False
+        OPENJUDGE_REQUEST_TIMEOUT = 1
+        SUBMISSION_CODE_MAX_LENGTH = 20000
+        RATE_LIMIT_MAX_SUBMISSIONS = 20
+        RATE_LIMIT_WINDOW_SECONDS = 300
+        JOB_QUEUE_BACKEND = "inline"
+        INTERNAL_JOB_TOKEN = "test-internal-job-token"
+        APP_BASE_URL = "http://localhost:5000"
+        PROBLEM_SNAPSHOT_CACHE_ENABLED = True
+        PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS = 86400
+
+    def fake_fetch(self, url):
+        with lock:
+            fetch_calls.append(url)
+        threading.Event().wait(0.1)
+        return ProblemContent(
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_path="ch0107/01",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            source_text="source",
+            raw_excerpt="desc\ninput\noutput",
+        )
+
+    def fake_diagnose(self, payload: DiagnosisPayload):
+        return _sample_diagnosis_response()
+
+    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fake_fetch)
+    monkeypatch.setattr("src.app.services.jobs.DeepSeekDiagnosisService.diagnose", fake_diagnose)
+
+    app = create_app(ConcurrentConfig)
+    with app.app_context():
+        db.create_all()
+        first = Submission(
+            student_name="甲",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            fetch_status="queued",
+            diagnosis_status="queued",
+        )
+        second = Submission(
+            student_name="乙",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 1; }",
+            fetch_status="queued",
+            diagnosis_status="queued",
+        )
+        db.session.add_all([first, second])
+        db.session.commit()
+        public_ids = [first.public_id, second.public_id]
+
+    errors = []
+
+    def worker(public_id: str):
+        try:
+            with app.app_context():
+                from src.app.services.jobs import process_diagnosis_job
+
+                process_diagnosis_job(public_id, fetch_before_diagnosis=True)
+        except Exception as exc:  # pragma: no cover - assertion path
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker, args=(public_id,)) for public_id in public_ids]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert errors == []
+    assert len(fetch_calls) == 1
