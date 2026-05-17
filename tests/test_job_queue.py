@@ -1,4 +1,6 @@
 from src.app import create_app
+import httpx
+
 from src.app.services.job_queue import JobMessage, enqueue_job
 
 
@@ -27,6 +29,8 @@ class QueueConfig:
     VERCEL_QUEUE_TOPIC = "noi_submission_jobs"
     VERCEL_OIDC_TOKEN = "queue-token"
     JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS = 2.5
+    JOB_QUEUE_PUBLISH_MAX_ATTEMPTS = 2
+    JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS = 0
     INTERNAL_JOB_TOKEN = "test-internal-job-token"
     APP_BASE_URL = "http://localhost:5000"
 
@@ -68,3 +72,37 @@ def test_vercel_job_queue_reuses_http_client_and_respects_publish_timeout(monkey
     assert post_calls[0]["headers"]["Authorization"] == "Bearer queue-token"
     assert post_calls[0]["headers"]["Vqs-Idempotency-Key"] == "idem-1"
     assert post_calls[1]["headers"]["Vqs-Idempotency-Key"] == "idem-2"
+
+
+def test_vercel_job_queue_retries_once_after_timeout(monkeypatch):
+    attempts = []
+
+    class ResponseStub:
+        def raise_for_status(self):
+            return None
+
+    class ClientStub:
+        def __init__(self, *, timeout):
+            self.timeout = timeout
+
+        def post(self, url, *, json, headers):
+            attempts.append({"url": url, "json": json, "headers": headers, "timeout": self.timeout})
+            if len(attempts) == 1:
+                raise httpx.ReadTimeout("queue publish timeout")
+            return ResponseStub()
+
+    monkeypatch.setattr("src.app.services.job_queue.httpx.Client", ClientStub)
+
+    app = create_app(QueueConfig)
+    message = JobMessage(
+        job_type="fetch-and-student-diagnose",
+        submission_public_id="sub-456",
+        requested_by="student",
+    )
+
+    with app.app_context():
+        enqueue_job(message, idempotency_key="idem-retry")
+
+    assert len(attempts) == 2
+    assert attempts[0]["headers"]["Vqs-Idempotency-Key"] == "idem-retry"
+    assert attempts[1]["headers"]["Vqs-Idempotency-Key"] == "idem-retry"

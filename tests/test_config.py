@@ -27,6 +27,8 @@ def _reload_config_module(monkeypatch, **env):
         "FETCH_CONCURRENCY_LIMIT",
         "ENABLE_SUBMISSION_STATUS_POLLING",
         "JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS",
+        "JOB_QUEUE_PUBLISH_MAX_ATTEMPTS",
+        "JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS",
         "SQLALCHEMY_POOL_SIZE",
         "SQLALCHEMY_MAX_OVERFLOW",
         "SQLALCHEMY_POOL_TIMEOUT",
@@ -99,6 +101,8 @@ def test_config_exposes_new_stability_and_concurrency_defaults(monkeypatch):
     assert config_module.Config.FETCH_CONCURRENCY_LIMIT == 8
     assert config_module.Config.ENABLE_SUBMISSION_STATUS_POLLING is True
     assert config_module.Config.JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS == 3.0
+    assert config_module.Config.JOB_QUEUE_PUBLISH_MAX_ATTEMPTS == 2
+    assert config_module.Config.JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS == 0.2
     assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_size"] == 5
     assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] == 10
     assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_timeout"] == 10

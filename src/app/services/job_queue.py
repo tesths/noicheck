@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+import time
 
 import httpx
 from flask import current_app, has_request_context, request
@@ -62,11 +63,32 @@ class _VercelJobQueue:
 
         url = f"https://{region}.vercel-queue.com/api/v3/topic/{topic}"
         payload = message.as_payload()
-        try:
-            response = self._http_client().post(url, json=payload, headers=headers)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise JobQueueError(f"发送队列消息失败：{exc}") from exc
+        max_attempts = max(int(current_app.config.get("JOB_QUEUE_PUBLISH_MAX_ATTEMPTS", 2)), 1)
+        retry_backoff_seconds = max(
+            float(current_app.config.get("JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS", 0.2)),
+            0.0,
+        )
+        last_error: httpx.HTTPError | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = self._http_client().post(url, json=payload, headers=headers)
+                response.raise_for_status()
+                return
+            except httpx.HTTPError as exc:
+                last_error = exc
+                if attempt >= max_attempts:
+                    break
+                current_app.logger.warning(
+                    "发送队列消息失败，准备重试 attempt=%s/%s job_type=%s submission=%s error=%s",
+                    attempt,
+                    max_attempts,
+                    message.job_type,
+                    message.submission_public_id,
+                    exc,
+                )
+                if retry_backoff_seconds > 0:
+                    time.sleep(retry_backoff_seconds)
+        raise JobQueueError(f"发送队列消息失败：{last_error}") from last_error
 
     def _resolve_oidc_token(self) -> str:
         if has_request_context():
