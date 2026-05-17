@@ -1,6 +1,6 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-05-09
+更新时间：2026-05-18
 
 ## 1. 项目目标
 
@@ -40,11 +40,20 @@
 - AI 配置已兼容 `AI_*` 与旧 `DEEPSEEK_*` 变量，可切换 OpenRouter。
 - 当前稳定策略以“正常使用优先”为主：先保证模型按 JSON 契约输出，并在解析层兼容少量脏格式返回。
 - 生产迁移已补齐旧库幂等处理：`request_token` 列、追问表结构、Alembic 基线补写和历史追问清洗都能重复执行。
+- 2026-05-17 已定点收敛一轮线上 `500`：生产数据库连接池增加最小值兜底，抓题和 AI 长耗时阶段会主动释放会话，减少连接池被占满的概率。
+- 2026-05-17 已收敛学生 self-check 慢请求：Vercel Queue 发布超时从 `10s` 收敛到 `3s`，并复用进程内 `httpx.Client`。
+- 2026-05-17 队列发布增加短重试：同一幂等键最多再尝试一次，降低高峰期偶发发布失败直接打成 `500` 的概率。
+- 真站 `https://noi.bbbypw.online/` 已完成学生 self-check `5` 并发、`8` 并发回归；`8` 并发实测 `8/8` 成功，提交页 `302`、详情页 `200`。
 
 目前学生端和教师端的 AI 能力已经分流：
 
 - 学生端：只能看到提示结果。
 - 教师端：可以看到完整诊断与参考程序。
+
+当前真站容量结论：
+
+- 已验证 `8` 并发 self-check 稳定。
+- 若目标提升到约 `100` 名学生集中提交，后续优先级应是数据库连接数、worker 横向扩展、队列吞吐和监控告警，而不是单独继续提高 AI 并发。
 
 ## 3. 当前架构
 
@@ -83,6 +92,12 @@
 - 教师完整诊断：`fetch-and-diagnose` / `diagnose-submission`
 - 学生提示链路：`fetch-and-student-diagnose`
 
+当前稳定性侧的补充策略：
+
+- Postgres 连接池默认做最小值兜底：`pool_size >= 5`、`max_overflow >= 10`、`pool_timeout >= 10`
+- 抓题与 AI 任务使用受控并发，避免高峰期无限制抢占连接和外部接口
+- 同题面抓取支持进程内缓存与去重锁，减少并发重复抓题
+
 ### 3.3 数据存储
 
 - 本地开发：SQLite
@@ -117,6 +132,10 @@
    - 默认沿用题面、学生代码、首轮提示和历史追问上下文
    - 页面保持原始代码和学生提示可见，追问区从右侧抽屉展开
    - 仅允许题目相关的编程问题；非编程内容直接返回统一拒答文案
+
+补充说明：
+
+- 学生提交成功后的页面跳转仍是同步 HTTP 请求，但当前只保留“落库 + 投递队列 + 重定向”这段关键路径，抓题和 AI 均在后台异步执行。
 
 学生端结果只允许展示：
 
@@ -354,6 +373,9 @@
 - `JOB_QUEUE_BACKEND=vercel`
 - `VERCEL_QUEUE_REGION`
 - `VERCEL_QUEUE_TOPIC=noi_submission_jobs`
+- `JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS`
+- `JOB_QUEUE_PUBLISH_MAX_ATTEMPTS`
+- `JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS`
 - `INTERNAL_JOB_TOKEN`
 - `APP_BASE_URL`
 
@@ -365,6 +387,7 @@
 - 线上 Queue callback 优先依赖请求头里的 `x-vercel-oidc-token` 回拉消息；仅在本地联调真实 Queue 或脱离 Vercel 环境时，才需要显式提供 `VERCEL_OIDC_TOKEN`。
 - 若线上仍保留旧变量名，系统会继续兼容读取 `DEEPSEEK_*`。
 - 当前默认不启用额外的 OpenRouter 速度调优参数，优先保证返回内容稳定可解析。
+- 若要提升高峰稳定性，应一并确认 `SQLALCHEMY_POOL_SIZE`、`SQLALCHEMY_MAX_OVERFLOW`、`SQLALCHEMY_POOL_TIMEOUT`、`AI_CONCURRENCY_LIMIT_STUDENT`、`AI_CONCURRENCY_LIMIT_TEACHER`、`FETCH_CONCURRENCY_LIMIT`。
 - `scripts/prod-db-migrate.sh` 在 `db upgrade` 后会自动执行 `uv run flask clean-followup-history`。
 - 如需先观察影响范围，可单独执行 `uv run flask clean-followup-history --dry-run`。
 

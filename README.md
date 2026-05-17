@@ -14,6 +14,13 @@
 - 生产部署：Vercel 连接 GitHub 仓库自动部署
 - 生产数据库迁移：GitHub Actions
 
+最近一次稳定性回归结论：
+
+- 2026-05-17 已定点修复一轮线上 `500` 与慢请求问题
+- 真站 `https://noi.bbbypw.online/` 已完成学生 self-check `5` 并发、`8` 并发压测
+- `8` 并发实测 `8/8` 成功，提交页 `302`、详情页 `200`
+- 本轮压测下提交请求耗时约 `1.6s ~ 1.9s`，整条跳转链路约 `3.8s ~ 4.3s`
+
 ## 文档入口
 
 - [PROJECT_STATUS.md](./PROJECT_STATUS.md)：当前架构、业务流程、数据模型和实现状态
@@ -191,8 +198,20 @@ uv run pytest tests/test_admin_submission_management.py -q
 - `JOB_QUEUE_BACKEND=vercel`
 - `VERCEL_QUEUE_REGION`
 - `VERCEL_QUEUE_TOPIC=noi_submission_jobs`
+- `JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS`
+- `JOB_QUEUE_PUBLISH_MAX_ATTEMPTS`
+- `JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS`
 - `INTERNAL_JOB_TOKEN`
 - `APP_BASE_URL`
+
+稳定性相关变量建议一并确认：
+
+- `SQLALCHEMY_POOL_SIZE`
+- `SQLALCHEMY_MAX_OVERFLOW`
+- `SQLALCHEMY_POOL_TIMEOUT`
+- `AI_CONCURRENCY_LIMIT_STUDENT`
+- `AI_CONCURRENCY_LIMIT_TEACHER`
+- `FETCH_CONCURRENCY_LIMIT`
 
 兼容说明：
 
@@ -215,6 +234,12 @@ uv run pytest tests/test_admin_submission_management.py -q
 - `queue_message_fetch_failed`
   说明已经识别出 Queue CloudEvent，但回拉 Vercel Queue API 失败，应继续检查 OIDC token、region、deployment id 或 Queue API 响应
 
+最近一轮稳定性收敛后，主站的队列发布策略是：
+
+- 发布超时默认从 `10s` 收敛到 `3s`
+- 同一进程内复用 `httpx.Client`
+- 队列发布失败时使用相同幂等键做一次短重试，减少高峰期偶发 `500`
+
 ## 线上回归建议
 
 发版后建议至少回归这些链路：
@@ -234,6 +259,7 @@ uv run pytest tests/test_admin_submission_management.py -q
 - 学生端 AI 是提示链路，不是实际编译执行判题。
 - OpenJudge 抓题依赖目标站点可访问性。
 - 线上稳定性仍然依赖队列、外部抓题和模型接口。
+- 当前真站已经验证到 `8` 并发 self-check 稳定；若目标是约 `100` 名学生集中提交，下一步应继续从数据库连接数、worker 横向扩展和队列吞吐做容量规划，而不是只提高 AI 并发。
 
 ## 补充
 
