@@ -102,6 +102,20 @@ def test_config_exposes_new_stability_and_concurrency_defaults(monkeypatch):
     assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_timeout"] == 10
 
 
+def test_config_enforces_minimum_production_pool_values(monkeypatch):
+    config_module = _reload_config_module(
+        monkeypatch,
+        DATABASE_URL="postgresql://user:pass@localhost:5432/db",
+        SQLALCHEMY_POOL_SIZE="2",
+        SQLALCHEMY_MAX_OVERFLOW="1",
+        SQLALCHEMY_POOL_TIMEOUT="3",
+    )
+
+    assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_size"] == 5
+    assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] == 10
+    assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_timeout"] == 10
+
+
 def test_create_app_rejects_missing_production_settings():
     class ProductionConfig:
         TESTING = True

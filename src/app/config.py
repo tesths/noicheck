@@ -45,12 +45,15 @@ def _is_production_environment() -> bool:
 def _build_engine_options(url: str) -> dict:
     if url.startswith("sqlite"):
         return {"connect_args": {"timeout": 30}}
+    pool_size = max(int(os.getenv("SQLALCHEMY_POOL_SIZE", "5")), 5)
+    max_overflow = max(int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "10")), 10)
+    pool_timeout = max(int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "10")), 10)
     return {
         "pool_pre_ping": True,
         "pool_recycle": int(os.getenv("SQLALCHEMY_POOL_RECYCLE", "300")),
-        "pool_size": int(os.getenv("SQLALCHEMY_POOL_SIZE", "5")),
-        "max_overflow": int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "10")),
-        "pool_timeout": int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "10")),
+        "pool_size": pool_size,
+        "max_overflow": max_overflow,
+        "pool_timeout": pool_timeout,
     }
 
 
