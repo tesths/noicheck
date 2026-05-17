@@ -48,8 +48,9 @@ def _build_engine_options(url: str) -> dict:
     return {
         "pool_pre_ping": True,
         "pool_recycle": int(os.getenv("SQLALCHEMY_POOL_RECYCLE", "300")),
-        "pool_size": int(os.getenv("SQLALCHEMY_POOL_SIZE", "2")),
-        "max_overflow": int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "1")),
+        "pool_size": int(os.getenv("SQLALCHEMY_POOL_SIZE", "5")),
+        "max_overflow": int(os.getenv("SQLALCHEMY_MAX_OVERFLOW", "10")),
+        "pool_timeout": int(os.getenv("SQLALCHEMY_POOL_TIMEOUT", "10")),
     }
 
 

@@ -423,6 +423,33 @@ def test_student_self_check_submission_queues_student_hint_job(app, client, monk
         ]
 
 
+def test_student_self_check_redirect_uses_saved_public_id_even_if_session_is_released(app, client, monkeypatch):
+    def fake_enqueue(submission, *, requested_by):
+        db.session.remove()
+
+    monkeypatch.setattr("src.app.routes.student.enqueue_student_hint_job", fake_enqueue)
+
+    with app.app_context():
+        student = StudentUser(nickname="小刚", password_hash=hash_password("pass-789"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "小刚", "pass-789")
+    request_token = _submission_request_token(client, "/student/submissions/new/self-check")
+    response = client.post(
+        "/student/submissions/new/self-check",
+        data={
+            "request_token": request_token,
+            "problem_url": "http://noi.openjudge.cn/ch0107/01/",
+            "code_text": "#include <iostream>\nint main() { return 0; }",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/student/submissions/" in response.headers["Location"]
+
+
 def test_student_teacher_review_submission_queues_teacher_diagnosis_job(app, client, monkeypatch):
     def fail_if_fetch_called(self, url):
         raise AssertionError("学生提交接口不应同步抓题")

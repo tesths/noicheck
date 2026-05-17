@@ -284,6 +284,7 @@ def _create_student_submission(*, submission_mode: str):
             status_code=500,
         )
 
+    submission_public_id = submission.public_id
     try:
         if submission_mode == "self_check":
             enqueue_student_hint_job(submission, requested_by="student")
@@ -300,7 +301,7 @@ def _create_student_submission(*, submission_mode: str):
             status_code=500,
         )
 
-    return redirect(url_for("student.submission_detail", public_id=submission.public_id))
+    return redirect(url_for("student.submission_detail", public_id=submission_public_id))
 
 
 @student_bp.route("/login", methods=["GET", "POST"])

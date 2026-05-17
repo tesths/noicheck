@@ -26,6 +26,10 @@ def _reload_config_module(monkeypatch, **env):
         "AI_CONCURRENCY_LIMIT_TEACHER",
         "FETCH_CONCURRENCY_LIMIT",
         "ENABLE_SUBMISSION_STATUS_POLLING",
+        "SQLALCHEMY_POOL_SIZE",
+        "SQLALCHEMY_MAX_OVERFLOW",
+        "SQLALCHEMY_POOL_TIMEOUT",
+        "DATABASE_URL",
     ]
     for key in keys:
         monkeypatch.delenv(key, raising=False)
@@ -79,7 +83,7 @@ def test_config_falls_back_to_deepseek_env_when_ai_env_missing(monkeypatch):
 
 
 def test_config_exposes_new_stability_and_concurrency_defaults(monkeypatch):
-    config_module = _reload_config_module(monkeypatch)
+    config_module = _reload_config_module(monkeypatch, DATABASE_URL="postgresql://user:pass@localhost:5432/db")
 
     assert config_module.Config.AI_REQUEST_TIMEOUT_SECONDS == 30.0
     assert config_module.Config.AI_MAX_RETRIES == 1
@@ -93,6 +97,9 @@ def test_config_exposes_new_stability_and_concurrency_defaults(monkeypatch):
     assert config_module.Config.AI_CONCURRENCY_LIMIT_TEACHER == 4
     assert config_module.Config.FETCH_CONCURRENCY_LIMIT == 8
     assert config_module.Config.ENABLE_SUBMISSION_STATUS_POLLING is True
+    assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_size"] == 5
+    assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["max_overflow"] == 10
+    assert config_module.Config.SQLALCHEMY_ENGINE_OPTIONS["pool_timeout"] == 10
 
 
 def test_create_app_rejects_missing_production_settings():

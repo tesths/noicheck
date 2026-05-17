@@ -271,6 +271,68 @@ def test_process_job_message_raises_job_queue_error_for_unknown_job_type():
         raise AssertionError("expected JobQueueError")
 
 
+def test_process_student_hint_job_releases_db_session_before_ai_call(app, monkeypatch):
+    _clear_problem_snapshot_memory_cache()
+    release_calls = []
+
+    def fake_fetch(self, url):
+        return ProblemContent(
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_path="ch0107/01",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            source_text="source",
+            raw_excerpt="desc\ninput\noutput",
+        )
+
+    def fake_release_db_session():
+        release_calls.append("released")
+        db.session.remove()
+
+    def fake_diagnose_student(self, payload: DiagnosisPayload):
+        assert release_calls
+        student_result = {
+            "overall_assessment": "学生提示完成",
+            "confidence": "medium",
+            "possible_issues": [],
+            "next_step_checks": ["先检查输入"],
+            "encouragement_or_strategy": "继续加油",
+        }
+        return type(
+            "StudentHintResponseStub",
+            (),
+            {
+                "result": __import__("src.app.schemas", fromlist=["StudentHintResult"]).StudentHintResult.model_validate(student_result),
+                "raw_content": "{}",
+                "latency_ms": 120,
+                "model_name": "deepseek-v4-pro",
+            },
+        )()
+
+    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fake_fetch)
+    monkeypatch.setattr("src.app.services.jobs.DeepSeekDiagnosisService.diagnose_student", fake_diagnose_student)
+    monkeypatch.setattr("src.app.services.jobs._release_db_session", fake_release_db_session)
+
+    with app.app_context():
+        submission = Submission(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            fetch_status="queued",
+            student_hint_status="queued",
+        )
+        db.session.add(submission)
+        db.session.commit()
+
+        from src.app.services.jobs import process_student_hint_job
+
+        assert process_student_hint_job(submission.public_id, fetch_before_diagnosis=True) == "success"
+
+
 def test_process_diagnosis_job_avoids_duplicate_fetch_under_concurrency(tmp_path, monkeypatch):
     _clear_problem_snapshot_memory_cache()
     fetch_calls = []
