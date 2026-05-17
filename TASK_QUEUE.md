@@ -41,6 +41,7 @@
 - [已完成] 2026-05-09 修复 Vercel Queue CloudEvent 回调分支：当 callback 只有 `ce-vqs*` 头时，consumer 会按 `messageId` 回拉真实 payload
 - [已完成] 2026-05-09 同步维护 README / PROJECT_STATUS，补齐 Queue consumer 三条处理路径与线上排错信号
 - [已完成] 2026-05-17 收敛队列与内部任务 `500`，增加 AI 超时/重试、题面缓存复用和受控并发，提升高峰提交稳定性
+- [已完成] 2026-05-17 收敛学生 self-check 慢请求与高并发 `500`：缩短队列投递阻塞、复用 HTTP 客户端、增加短重试，并完成真站 5/8 并发验证
 
 ## 待办
 
