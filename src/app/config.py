@@ -103,6 +103,7 @@ class Config:
     VERCEL_QUEUE_REGION = os.getenv("VERCEL_QUEUE_REGION", "iad1").strip()
     VERCEL_QUEUE_TOPIC = os.getenv("VERCEL_QUEUE_TOPIC", "noi_submission_jobs").strip()
     VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN", "").strip()
+    JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS = float(os.getenv("JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS", "3"))
     INTERNAL_JOB_TOKEN = os.getenv("INTERNAL_JOB_TOKEN", "").strip()
     JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS = float(os.getenv("JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS", "15"))
     JOB_INTERNAL_MAX_RETRIES = int(os.getenv("JOB_INTERNAL_MAX_RETRIES", "1"))

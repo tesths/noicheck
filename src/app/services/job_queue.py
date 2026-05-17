@@ -63,7 +63,7 @@ class _VercelJobQueue:
         url = f"https://{region}.vercel-queue.com/api/v3/topic/{topic}"
         payload = message.as_payload()
         try:
-            response = httpx.post(url, json=payload, headers=headers, timeout=10)
+            response = self._http_client().post(url, json=payload, headers=headers)
             response.raise_for_status()
         except httpx.HTTPError as exc:
             raise JobQueueError(f"发送队列消息失败：{exc}") from exc
@@ -76,6 +76,16 @@ class _VercelJobQueue:
             if header_value:
                 return header_value.strip()
         return str(current_app.config.get("VERCEL_OIDC_TOKEN", "")).strip()
+
+    def _http_client(self) -> httpx.Client:
+        client = current_app.extensions.get("vercel_job_queue_http_client")
+        if client is not None:
+            return client
+
+        timeout = float(current_app.config.get("JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS", 3))
+        client = httpx.Client(timeout=timeout)
+        current_app.extensions["vercel_job_queue_http_client"] = client
+        return client
 
 
 def enqueue_job(message: JobMessage, *, idempotency_key: str | None = None) -> None:
