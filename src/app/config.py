@@ -79,6 +79,10 @@ class Config:
     AI_API_KEY = _first_env_value("AI_API_KEY", "DEEPSEEK_API_KEY")
     AI_BASE_URL = _first_env_value("AI_BASE_URL", "DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
     AI_MODEL = _first_env_value("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-v4-pro")
+    AI_REQUEST_TIMEOUT_SECONDS = float(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "30"))
+    AI_MAX_RETRIES = int(os.getenv("AI_MAX_RETRIES", "1"))
+    AI_RETRY_BACKOFF_SECONDS = float(os.getenv("AI_RETRY_BACKOFF_SECONDS", "1"))
+    AI_MAX_PROMPT_CHARS = int(os.getenv("AI_MAX_PROMPT_CHARS", "12000"))
     DEEPSEEK_API_KEY = AI_API_KEY
     DEEPSEEK_BASE_URL = AI_BASE_URL
     DEEPSEEK_MODEL = AI_MODEL
@@ -96,4 +100,12 @@ class Config:
     VERCEL_QUEUE_TOPIC = os.getenv("VERCEL_QUEUE_TOPIC", "noi_submission_jobs").strip()
     VERCEL_OIDC_TOKEN = os.getenv("VERCEL_OIDC_TOKEN", "").strip()
     INTERNAL_JOB_TOKEN = os.getenv("INTERNAL_JOB_TOKEN", "").strip()
+    JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS = float(os.getenv("JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS", "15"))
+    JOB_INTERNAL_MAX_RETRIES = int(os.getenv("JOB_INTERNAL_MAX_RETRIES", "1"))
+    PROBLEM_SNAPSHOT_CACHE_ENABLED = _env_flag("PROBLEM_SNAPSHOT_CACHE_ENABLED", default=True)
+    PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS = int(os.getenv("PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS", "86400"))
+    AI_CONCURRENCY_LIMIT_STUDENT = int(os.getenv("AI_CONCURRENCY_LIMIT_STUDENT", "8"))
+    AI_CONCURRENCY_LIMIT_TEACHER = int(os.getenv("AI_CONCURRENCY_LIMIT_TEACHER", "4"))
+    FETCH_CONCURRENCY_LIMIT = int(os.getenv("FETCH_CONCURRENCY_LIMIT", "8"))
+    ENABLE_SUBMISSION_STATUS_POLLING = _env_flag("ENABLE_SUBMISSION_STATUS_POLLING", default=True)
     APP_BASE_URL = os.getenv("APP_BASE_URL", "").rstrip("/")

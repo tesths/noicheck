@@ -237,6 +237,40 @@ function parseMultipartJsonPayload(bodyText, headers) {
   throw new Error("missing_queue_payload");
 }
 
+async function postInternalJob(baseUrl, internalToken, payload) {
+  const timeoutMs = Number(process.env.JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS || 15) * 1000;
+  const maxRetries = Number(process.env.JOB_INTERNAL_MAX_RETRIES || 1);
+
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    try {
+      return await fetch(`${baseUrl}/internal/jobs/process`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Job-Token": internalToken,
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      if (attempt >= maxRetries) {
+        return {
+          ok: false,
+          status: 502,
+          async text() {
+            return JSON.stringify({
+              ok: false,
+              error: "internal_processor_unreachable",
+              retryable: true,
+              detail: String(error && error.message ? error.message : error),
+            });
+          },
+        };
+      }
+    }
+  }
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -272,14 +306,7 @@ module.exports = async (req, res) => {
     return res.status(500).json({ ok: false, error: "missing_internal_job_config" });
   }
 
-  const response = await fetch(`${baseUrl}/internal/jobs/process`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Internal-Job-Token": internalToken,
-    },
-    body: JSON.stringify(payload),
-  });
+  const response = await postInternalJob(baseUrl, internalToken, payload);
 
   const text = await response.text();
   let data;
@@ -290,10 +317,15 @@ module.exports = async (req, res) => {
   }
 
   if (!response.ok) {
-    return res.status(500).json({
+    const retryable = Boolean(data && data.retryable);
+    const errorCode = data && data.error === "internal_processor_unreachable"
+      ? "internal_processor_unreachable"
+      : "internal_processor_failed";
+    return res.status(retryable ? response.status || 503 : 500).json({
       ok: false,
-      error: "internal_processor_failed",
+      error: errorCode,
       detail: data,
+      retryable,
     });
   }
 

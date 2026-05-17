@@ -156,12 +156,20 @@ class DeepSeekDiagnosisService:
         client: OpenAI | None = None,
         teacher_system_prompt: str | None = None,
         student_system_prompt: str | None = None,
+        request_timeout: float | None = None,
+        max_retries: int | None = None,
+        retry_backoff_seconds: float | None = None,
+        max_prompt_chars: int | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model_name = model_name
         self.teacher_system_prompt = _normalize_optional_prompt(teacher_system_prompt)
         self.student_system_prompt = _normalize_optional_prompt(student_system_prompt)
+        self.request_timeout = request_timeout if request_timeout is not None else 30.0
+        self.max_retries = max_retries if max_retries is not None else 1
+        self.retry_backoff_seconds = retry_backoff_seconds if retry_backoff_seconds is not None else 1.0
+        self.max_prompt_chars = max_prompt_chars if max_prompt_chars is not None else 12000
         self.client = client or OpenAI(api_key=api_key, base_url=self.base_url)
 
     def diagnose(self, payload: DiagnosisPayload) -> DiagnosisResponse:
@@ -229,15 +237,28 @@ class DeepSeekDiagnosisService:
             raise DiagnosisServiceError("未配置 AI API Key。")
 
         started_at = time.perf_counter()
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                temperature=0.2,
-                response_format={"type": "json_object"},
-                messages=self._build_messages(payload, audience=audience),
-            )
-        except Exception as exc:
-            raise DiagnosisServiceError(f"调用 AI 服务失败：{exc}") from exc
+        response = None
+        last_exc: Exception | None = None
+        messages = self._build_messages(payload, audience=audience)
+        for attempt in range(self.max_retries + 1):
+            try:
+                kwargs = {
+                    "model": self.model_name,
+                    "temperature": 0.2,
+                    "response_format": {"type": "json_object"},
+                    "messages": messages,
+                }
+                if self.request_timeout is not None:
+                    kwargs["timeout"] = self.request_timeout
+                response = self.client.chat.completions.create(**kwargs)
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= self.max_retries or not _is_retryable_ai_error(exc):
+                    raise DiagnosisServiceError(f"调用 AI 服务失败：{exc}") from exc
+                time.sleep(self.retry_backoff_seconds)
+        if response is None:
+            raise DiagnosisServiceError(f"调用 AI 服务失败：{last_exc}")
 
         latency_ms = int((time.perf_counter() - started_at) * 1000)
         raw_content = response.choices[0].message.content or ""
@@ -301,6 +322,12 @@ class DeepSeekDiagnosisService:
         )
 
     def _build_user_prompt(self, payload: DiagnosisPayload, *, audience: str) -> str:
+        description_text = _truncate_text(payload.description_text or "未抓取到", self.max_prompt_chars)
+        input_text = _truncate_text(payload.input_text or "未抓取到", self.max_prompt_chars)
+        output_text = _truncate_text(payload.output_text or "未抓取到", self.max_prompt_chars)
+        sample_input_text = _truncate_text(payload.sample_input_text or "未抓取到", self.max_prompt_chars)
+        sample_output_text = _truncate_text(payload.sample_output_text or "未抓取到", self.max_prompt_chars)
+        code_text = _truncate_text(payload.code_text, self.max_prompt_chars)
         if audience == "student":
             return "\n\n".join(
                 [
@@ -318,15 +345,15 @@ class DeepSeekDiagnosisService:
                     "除代码外，请所有说明都使用简体中文。",
                     f"题目链接：{payload.problem_url}",
                     f"题目标题：{payload.problem_title or '未知'}",
-                    f"题目描述：{payload.description_text or '未抓取到'}",
-                    f"输入格式：{payload.input_text or '未抓取到'}",
-                    f"输出格式：{payload.output_text or '未抓取到'}",
-                    f"样例输入：{payload.sample_input_text or '未抓取到'}",
-                    f"样例输出：{payload.sample_output_text or '未抓取到'}",
+                    f"题目描述：{description_text}",
+                    f"输入格式：{input_text}",
+                    f"输出格式：{output_text}",
+                    f"样例输入：{sample_input_text}",
+                    f"样例输出：{sample_output_text}",
                     f"学生：{payload.student_name}",
                     "程序语言：C++",
                     "程序：",
-                    payload.code_text,
+                    code_text,
                 ]
             )
         return "\n\n".join(
@@ -338,15 +365,15 @@ class DeepSeekDiagnosisService:
                 "除代码外，请所有说明都使用简体中文。",
                 f"题目链接：{payload.problem_url}",
                 f"题目标题：{payload.problem_title or '未知'}",
-                f"题目描述：{payload.description_text or '未抓取到'}",
-                f"输入格式：{payload.input_text or '未抓取到'}",
-                f"输出格式：{payload.output_text or '未抓取到'}",
-                f"样例输入：{payload.sample_input_text or '未抓取到'}",
-                f"样例输出：{payload.sample_output_text or '未抓取到'}",
+                f"题目描述：{description_text}",
+                f"输入格式：{input_text}",
+                f"输出格式：{output_text}",
+                f"样例输入：{sample_input_text}",
+                f"样例输出：{sample_output_text}",
                 f"学生：{payload.student_name}",
                 "程序语言：C++",
                 "程序：",
-                payload.code_text,
+                code_text,
             ]
         )
 
@@ -394,6 +421,17 @@ class DeepSeekDiagnosisService:
             )
 
         return "\n\n".join(parts)
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    if max_chars <= 0 or len(text) <= max_chars:
+        return text
+    return text[:max_chars]
+
+
+def _is_retryable_ai_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return any(keyword in text for keyword in ("timeout", "tempor", "429", "502", "503", "504", "rate limit"))
 
 
 

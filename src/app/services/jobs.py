@@ -1,5 +1,8 @@
 import hashlib
 import time
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from threading import BoundedSemaphore
 
 from flask import current_app
 from sqlalchemy.exc import SQLAlchemyError
@@ -14,7 +17,7 @@ from .ai import (
     STUDENT_PROMPT_VERSION,
 )
 from .job_queue import JobMessage, JobQueueError, enqueue_job
-from .problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError
+from .problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError, normalize_openjudge_url
 from .settings import get_active_ai_model, get_student_system_prompt, get_teacher_system_prompt
 
 FETCH_PROBLEM_JOB = "fetch-problem"
@@ -23,6 +26,12 @@ FETCH_AND_DIAGNOSE_JOB = "fetch-and-diagnose"
 FETCH_AND_STUDENT_DIAGNOSE_JOB = "fetch-and-student-diagnose"
 
 PROCESSING_DIAGNOSIS_STATUSES = {"queued", "running"}
+_FETCH_SEMAPHORE = BoundedSemaphore(8)
+_TEACHER_AI_SEMAPHORE = BoundedSemaphore(4)
+_STUDENT_AI_SEMAPHORE = BoundedSemaphore(8)
+setattr(_FETCH_SEMAPHORE, "_initial_value", 8)
+setattr(_TEACHER_AI_SEMAPHORE, "_initial_value", 4)
+setattr(_STUDENT_AI_SEMAPHORE, "_initial_value", 8)
 
 
 def enqueue_fetch_problem_job(submission: Submission, *, requested_by: str) -> None:
@@ -168,29 +177,33 @@ def process_diagnosis_job(submission_public_id: str, *, fetch_before_diagnosis: 
     db.session.commit()
 
     ai_config = _ai_config()
-    diagnosis_service = DeepSeekDiagnosisService(
-        api_key=ai_config["api_key"],
-        base_url=ai_config["base_url"],
-        model_name=ai_config["model_name"],
-        teacher_system_prompt=get_teacher_system_prompt(),
-        student_system_prompt=get_student_system_prompt(),
-    )
-
     snapshot = submission.problem_snapshot
     try:
-        diagnosis = diagnosis_service.diagnose(
-            DiagnosisPayload(
-                student_name=submission.student_name,
-                problem_url=submission.problem_url,
-                problem_title=submission.problem_title,
-                description_text=snapshot.description_text if snapshot else None,
-                input_text=snapshot.input_text if snapshot else None,
-                output_text=snapshot.output_text if snapshot else None,
-                sample_input_text=snapshot.sample_input_text if snapshot else None,
-                sample_output_text=snapshot.sample_output_text if snapshot else None,
-                code_text=submission.code_text,
+        with _ai_semaphore("teacher"):
+            diagnosis_service = DeepSeekDiagnosisService(
+                api_key=ai_config["api_key"],
+                base_url=ai_config["base_url"],
+                model_name=ai_config["model_name"],
+                teacher_system_prompt=get_teacher_system_prompt(),
+                student_system_prompt=get_student_system_prompt(),
+                request_timeout=float(current_app.config.get("AI_REQUEST_TIMEOUT_SECONDS", 30)),
+                max_retries=int(current_app.config.get("AI_MAX_RETRIES", 1)),
+                retry_backoff_seconds=float(current_app.config.get("AI_RETRY_BACKOFF_SECONDS", 1)),
+                max_prompt_chars=int(current_app.config.get("AI_MAX_PROMPT_CHARS", 12000)),
             )
-        )
+            diagnosis = diagnosis_service.diagnose(
+                DiagnosisPayload(
+                    student_name=submission.student_name,
+                    problem_url=submission.problem_url,
+                    problem_title=submission.problem_title,
+                    description_text=snapshot.description_text if snapshot else None,
+                    input_text=snapshot.input_text if snapshot else None,
+                    output_text=snapshot.output_text if snapshot else None,
+                    sample_input_text=snapshot.sample_input_text if snapshot else None,
+                    sample_output_text=snapshot.sample_output_text if snapshot else None,
+                    code_text=submission.code_text,
+                )
+            )
 
         submission.diagnosis_status = "success"
         db.session.add(
@@ -277,29 +290,33 @@ def process_student_hint_job(submission_public_id: str, *, fetch_before_diagnosi
     db.session.commit()
 
     ai_config = _ai_config()
-    diagnosis_service = DeepSeekDiagnosisService(
-        api_key=ai_config["api_key"],
-        base_url=ai_config["base_url"],
-        model_name=ai_config["model_name"],
-        teacher_system_prompt=get_teacher_system_prompt(),
-        student_system_prompt=get_student_system_prompt(),
-    )
-
     snapshot = submission.problem_snapshot
     try:
-        diagnosis = diagnosis_service.diagnose_student(
-            DiagnosisPayload(
-                student_name=submission.student_name,
-                problem_url=submission.problem_url,
-                problem_title=submission.problem_title,
-                description_text=snapshot.description_text if snapshot else None,
-                input_text=snapshot.input_text if snapshot else None,
-                output_text=snapshot.output_text if snapshot else None,
-                sample_input_text=snapshot.sample_input_text if snapshot else None,
-                sample_output_text=snapshot.sample_output_text if snapshot else None,
-                code_text=submission.code_text,
+        with _ai_semaphore("student"):
+            diagnosis_service = DeepSeekDiagnosisService(
+                api_key=ai_config["api_key"],
+                base_url=ai_config["base_url"],
+                model_name=ai_config["model_name"],
+                teacher_system_prompt=get_teacher_system_prompt(),
+                student_system_prompt=get_student_system_prompt(),
+                request_timeout=float(current_app.config.get("AI_REQUEST_TIMEOUT_SECONDS", 30)),
+                max_retries=int(current_app.config.get("AI_MAX_RETRIES", 1)),
+                retry_backoff_seconds=float(current_app.config.get("AI_RETRY_BACKOFF_SECONDS", 1)),
+                max_prompt_chars=int(current_app.config.get("AI_MAX_PROMPT_CHARS", 12000)),
             )
-        )
+            diagnosis = diagnosis_service.diagnose_student(
+                DiagnosisPayload(
+                    student_name=submission.student_name,
+                    problem_url=submission.problem_url,
+                    problem_title=submission.problem_title,
+                    description_text=snapshot.description_text if snapshot else None,
+                    input_text=snapshot.input_text if snapshot else None,
+                    output_text=snapshot.output_text if snapshot else None,
+                    sample_input_text=snapshot.sample_input_text if snapshot else None,
+                    sample_output_text=snapshot.sample_output_text if snapshot else None,
+                    code_text=submission.code_text,
+                )
+            )
 
         submission.student_hint_status = "success"
         db.session.add(
@@ -349,7 +366,22 @@ def _sync_problem_snapshot(submission: Submission) -> str:
     fetcher = OpenJudgeProblemFetcher(timeout=float(current_app.config.get("OPENJUDGE_REQUEST_TIMEOUT", 10)))
     snapshot = submission.problem_snapshot
     try:
-        problem = fetcher.fetch(submission.problem_url)
+        cached_snapshot = _load_cached_problem_snapshot(submission.problem_url)
+        if cached_snapshot is not None:
+            submission.problem_url = cached_snapshot["normalized_url"]
+            submission.problem_path = cached_snapshot["problem_path"]
+            submission.problem_title = cached_snapshot["title"]
+            submission.fetch_status = "success"
+            if snapshot is None:
+                snapshot = ProblemSnapshot(submission=submission, normalized_url=cached_snapshot["normalized_url"])
+                db.session.add(snapshot)
+            _apply_problem_snapshot(snapshot, cached_snapshot)
+            snapshot.fetch_error = None
+            db.session.commit()
+            return "success"
+
+        with _fetch_semaphore():
+            problem = fetcher.fetch(submission.problem_url)
         submission.problem_url = problem.normalized_url
         submission.problem_path = problem.problem_path
         submission.problem_title = problem.title
@@ -357,15 +389,21 @@ def _sync_problem_snapshot(submission: Submission) -> str:
         if snapshot is None:
             snapshot = ProblemSnapshot(submission=submission, normalized_url=problem.normalized_url)
             db.session.add(snapshot)
-        snapshot.normalized_url = problem.normalized_url
-        snapshot.title = problem.title
-        snapshot.description_text = problem.description_text
-        snapshot.input_text = problem.input_text
-        snapshot.output_text = problem.output_text
-        snapshot.sample_input_text = problem.sample_input_text
-        snapshot.sample_output_text = problem.sample_output_text
-        snapshot.source_text = problem.source_text
-        snapshot.raw_excerpt = problem.raw_excerpt
+        _apply_problem_snapshot(
+            snapshot,
+            {
+                "normalized_url": problem.normalized_url,
+                "problem_path": problem.problem_path,
+                "title": problem.title,
+                "description_text": problem.description_text,
+                "input_text": problem.input_text,
+                "output_text": problem.output_text,
+                "sample_input_text": problem.sample_input_text,
+                "sample_output_text": problem.sample_output_text,
+                "source_text": problem.source_text,
+                "raw_excerpt": problem.raw_excerpt,
+            },
+        )
         snapshot.fetch_error = None
         db.session.commit()
         return "success"
@@ -423,3 +461,97 @@ def _ai_config() -> dict[str, str]:
 
 def _ai_model_name() -> str:
     return get_active_ai_model()
+
+
+def _apply_problem_snapshot(snapshot: ProblemSnapshot, data: dict[str, str | None]) -> None:
+    snapshot.normalized_url = data["normalized_url"]
+    snapshot.title = data["title"]
+    snapshot.description_text = data["description_text"]
+    snapshot.input_text = data["input_text"]
+    snapshot.output_text = data["output_text"]
+    snapshot.sample_input_text = data["sample_input_text"]
+    snapshot.sample_output_text = data["sample_output_text"]
+    snapshot.source_text = data["source_text"]
+    snapshot.raw_excerpt = data["raw_excerpt"]
+
+
+def _load_cached_problem_snapshot(problem_url: str) -> dict[str, str | None] | None:
+    if not current_app.config.get("PROBLEM_SNAPSHOT_CACHE_ENABLED", True):
+        return None
+    try:
+        normalized_url = normalize_openjudge_url(problem_url)
+    except ProblemFetchError:
+        return None
+
+    ttl_seconds = int(current_app.config.get("PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS", 86400))
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+    cached_submission = (
+        Submission.query.join(ProblemSnapshot)
+        .filter(
+            Submission.deleted_at.is_(None),
+            Submission.fetch_status == "success",
+            Submission.problem_url == normalized_url,
+            Submission.created_at >= cutoff,
+        )
+        .order_by(Submission.created_at.desc())
+        .first()
+    )
+    if cached_submission is None or cached_submission.problem_snapshot is None:
+        return None
+
+    cached_snapshot = cached_submission.problem_snapshot
+    return {
+        "normalized_url": cached_snapshot.normalized_url,
+        "problem_path": cached_submission.problem_path,
+        "title": cached_snapshot.title,
+        "description_text": cached_snapshot.description_text,
+        "input_text": cached_snapshot.input_text,
+        "output_text": cached_snapshot.output_text,
+        "sample_input_text": cached_snapshot.sample_input_text,
+        "sample_output_text": cached_snapshot.sample_output_text,
+        "source_text": cached_snapshot.source_text,
+        "raw_excerpt": cached_snapshot.raw_excerpt,
+    }
+
+
+@contextmanager
+def _fetch_semaphore():
+    global _FETCH_SEMAPHORE
+    _FETCH_SEMAPHORE = _resize_semaphore(_FETCH_SEMAPHORE, int(current_app.config.get("FETCH_CONCURRENCY_LIMIT", 8)))
+    _FETCH_SEMAPHORE.acquire()
+    try:
+        yield
+    finally:
+        _FETCH_SEMAPHORE.release()
+
+
+@contextmanager
+def _ai_semaphore(audience: str):
+    global _TEACHER_AI_SEMAPHORE, _STUDENT_AI_SEMAPHORE
+    if audience == "student":
+        _STUDENT_AI_SEMAPHORE = _resize_semaphore(
+            _STUDENT_AI_SEMAPHORE,
+            int(current_app.config.get("AI_CONCURRENCY_LIMIT_STUDENT", 8)),
+        )
+        semaphore = _STUDENT_AI_SEMAPHORE
+    else:
+        _TEACHER_AI_SEMAPHORE = _resize_semaphore(
+            _TEACHER_AI_SEMAPHORE,
+            int(current_app.config.get("AI_CONCURRENCY_LIMIT_TEACHER", 4)),
+        )
+        semaphore = _TEACHER_AI_SEMAPHORE
+    semaphore.acquire()
+    try:
+        yield
+    finally:
+        semaphore.release()
+
+
+def _resize_semaphore(semaphore: BoundedSemaphore, limit: int) -> BoundedSemaphore:
+    limit = max(limit, 1)
+    current_limit = getattr(semaphore, "_initial_value", limit)
+    if current_limit == limit:
+        return semaphore
+    resized = BoundedSemaphore(limit)
+    setattr(resized, "_initial_value", limit)
+    return resized

@@ -33,6 +33,13 @@ def process_job():
             submission_public_id=submission_public_id,
         )
     except JobQueueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
+        return jsonify({"ok": False, "error": str(exc), "retryable": False}), 400
+    except Exception:
+        current_app.logger.exception(
+            "内部任务处理异常 job_type=%s submission=%s",
+            job_type,
+            submission_public_id,
+        )
+        return jsonify({"ok": False, "error": "internal_error", "retryable": True}), 500
 
     return jsonify({"ok": True, "status": status})

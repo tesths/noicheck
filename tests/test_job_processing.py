@@ -4,6 +4,7 @@ from src.app.services.ai import DiagnosisPayload, DiagnosisResponse
 from src.app.services.problem_fetcher import ProblemContent, ProblemFetchError
 from src.app.schemas import DiagnosisResult
 from src.app.services.auth import hash_password
+from src.app.services.job_queue import JobQueueError
 
 
 def _auth_headers() -> dict[str, str]:
@@ -175,3 +176,84 @@ def test_internal_job_endpoint_marks_failure_when_fetch_fails(app, client, monke
         assert submission.diagnosis_status == "failed"
         assert submission.latest_diagnosis_run.status == "failed"
         assert "抓取题面失败" in submission.latest_diagnosis_run.error_message
+
+
+def test_internal_job_endpoint_returns_controlled_error_for_unexpected_exception(client, monkeypatch):
+    def boom(**kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("src.app.routes.internal.process_job_message", boom)
+
+    response = client.post(
+        "/internal/jobs/process",
+        json={"job_type": "fetch-problem", "submission_public_id": "sub-1"},
+        headers=_auth_headers(),
+    )
+
+    assert response.status_code == 500
+    assert response.json["ok"] is False
+    assert response.json["error"] == "internal_error"
+    assert response.json["retryable"] is True
+
+
+def test_process_diagnosis_job_reuses_existing_problem_snapshot(app, monkeypatch):
+    fetch_calls = []
+
+    def fake_fetch(self, url):
+        fetch_calls.append(url)
+        return ProblemContent(
+            normalized_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_path="ch0107/01",
+            title="01:统计数字字符个数",
+            description_text="desc",
+            input_text="input",
+            output_text="output",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            source_text="source",
+            raw_excerpt="desc\ninput\noutput",
+        )
+
+    def fake_diagnose(self, payload: DiagnosisPayload):
+        return _sample_diagnosis_response()
+
+    monkeypatch.setattr("src.app.services.jobs.OpenJudgeProblemFetcher.fetch", fake_fetch)
+    monkeypatch.setattr("src.app.services.jobs.DeepSeekDiagnosisService.diagnose", fake_diagnose)
+
+    with app.app_context():
+        first = Submission(
+            student_name="小明",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            fetch_status="queued",
+            diagnosis_status="queued",
+        )
+        db.session.add(first)
+        db.session.commit()
+        from src.app.services.jobs import process_diagnosis_job
+
+        assert process_diagnosis_job(first.public_id, fetch_before_diagnosis=True) == "success"
+
+        second = Submission(
+            student_name="小红",
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 1; }",
+            fetch_status="queued",
+            diagnosis_status="queued",
+        )
+        db.session.add(second)
+        db.session.commit()
+
+        assert process_diagnosis_job(second.public_id, fetch_before_diagnosis=True) == "success"
+        assert len(fetch_calls) == 1
+
+
+def test_process_job_message_raises_job_queue_error_for_unknown_job_type():
+    from src.app.services.jobs import process_job_message
+
+    try:
+        process_job_message(job_type="unknown", submission_public_id="sub-1")
+    except JobQueueError as exc:
+        assert "未知任务类型" in str(exc)
+    else:
+        raise AssertionError("expected JobQueueError")

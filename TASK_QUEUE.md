@@ -40,6 +40,7 @@
 - [已完成] 2026-05-09 修复 Vercel Queue consumer payload 兼容性：支持解析对象 body、字符串化 JSON 与原始请求流
 - [已完成] 2026-05-09 修复 Vercel Queue CloudEvent 回调分支：当 callback 只有 `ce-vqs*` 头时，consumer 会按 `messageId` 回拉真实 payload
 - [已完成] 2026-05-09 同步维护 README / PROJECT_STATUS，补齐 Queue consumer 三条处理路径与线上排错信号
+- [已完成] 2026-05-17 收敛队列与内部任务 `500`，增加 AI 超时/重试、题面缓存复用和受控并发，提升高峰提交稳定性
 
 ## 待办
 

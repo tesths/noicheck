@@ -11,9 +11,21 @@ def _reload_config_module(monkeypatch, **env):
         "AI_API_KEY",
         "AI_BASE_URL",
         "AI_MODEL",
+        "AI_REQUEST_TIMEOUT_SECONDS",
+        "AI_MAX_RETRIES",
+        "AI_RETRY_BACKOFF_SECONDS",
+        "AI_MAX_PROMPT_CHARS",
         "DEEPSEEK_API_KEY",
         "DEEPSEEK_BASE_URL",
         "DEEPSEEK_MODEL",
+        "JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS",
+        "JOB_INTERNAL_MAX_RETRIES",
+        "PROBLEM_SNAPSHOT_CACHE_ENABLED",
+        "PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS",
+        "AI_CONCURRENCY_LIMIT_STUDENT",
+        "AI_CONCURRENCY_LIMIT_TEACHER",
+        "FETCH_CONCURRENCY_LIMIT",
+        "ENABLE_SUBMISSION_STATUS_POLLING",
     ]
     for key in keys:
         monkeypatch.delenv(key, raising=False)
@@ -64,6 +76,23 @@ def test_config_falls_back_to_deepseek_env_when_ai_env_missing(monkeypatch):
     assert config_module.Config.DEEPSEEK_API_KEY == "legacy-key"
     assert config_module.Config.DEEPSEEK_BASE_URL == "https://legacy.example.com"
     assert config_module.Config.DEEPSEEK_MODEL == "legacy-model"
+
+
+def test_config_exposes_new_stability_and_concurrency_defaults(monkeypatch):
+    config_module = _reload_config_module(monkeypatch)
+
+    assert config_module.Config.AI_REQUEST_TIMEOUT_SECONDS == 30.0
+    assert config_module.Config.AI_MAX_RETRIES == 1
+    assert config_module.Config.AI_RETRY_BACKOFF_SECONDS == 1.0
+    assert config_module.Config.AI_MAX_PROMPT_CHARS == 12000
+    assert config_module.Config.JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS == 15.0
+    assert config_module.Config.JOB_INTERNAL_MAX_RETRIES == 1
+    assert config_module.Config.PROBLEM_SNAPSHOT_CACHE_ENABLED is True
+    assert config_module.Config.PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS == 86400
+    assert config_module.Config.AI_CONCURRENCY_LIMIT_STUDENT == 8
+    assert config_module.Config.AI_CONCURRENCY_LIMIT_TEACHER == 4
+    assert config_module.Config.FETCH_CONCURRENCY_LIMIT == 8
+    assert config_module.Config.ENABLE_SUBMISSION_STATUS_POLLING is True
 
 
 def test_create_app_rejects_missing_production_settings():

@@ -76,6 +76,7 @@ def test_deepseek_service_uses_simple_chat_completion():
     assert "完整正确的 C++ 参考程序" in call["messages"][1]["content"]
     assert "简体中文" in call["messages"][1]["content"]
     assert result.result.possible_issues[0].title == "条件判断遗漏"
+    assert call["timeout"] == 30.0
 
 
 def test_deepseek_service_uses_custom_teacher_system_prompt():
@@ -256,6 +257,64 @@ def test_deepseek_service_accepts_json_with_prefix_and_suffix_text():
     )
 
     assert result.result.overall_assessment == "边界判断有误。"
+
+
+def test_deepseek_service_retries_once_for_retryable_failure():
+    class FlakyCompletions:
+        def __init__(self):
+            self.calls = 0
+
+        def create(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                raise RuntimeError("temporary 429")
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(
+                            content=json.dumps(
+                                {
+                                    "overall_assessment": "重试后成功。",
+                                    "confidence": "medium",
+                                    "missing_context": [],
+                                    "possible_issues": [],
+                                    "teacher_talking_points": [],
+                                    "next_step_checks": [],
+                                    "correct_program": "#include <iostream>\nint main(){return 0;}",
+                                },
+                                ensure_ascii=False,
+                            )
+                        )
+                    )
+                ]
+            )
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=FlakyCompletions()))
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+        max_retries=1,
+        retry_backoff_seconds=0,
+    )
+
+    result = service.diagnose(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            description_text="输入一行字符，统计其中数字字符的个数。",
+            input_text="一行字符串。",
+            output_text="输出数字字符个数。",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    assert result.result.overall_assessment == "重试后成功。"
+    assert client.chat.completions.calls == 2
 
 
 def test_deepseek_service_coerces_scalar_list_fields():
