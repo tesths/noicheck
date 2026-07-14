@@ -29,12 +29,25 @@ from .student import _followup_drawer_open_value
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 
+def _owned_students_query():
+    return StudentUser.query.filter_by(owner_admin_id=current_user.id).order_by(StudentUser.created_at.desc())
+
+
 def _student_list_query():
-    return StudentUser.query.order_by(StudentUser.created_at.desc())
+    return _owned_students_query()
+
+
+def _owned_student_or_404(student_id: int) -> StudentUser:
+    return StudentUser.query.filter_by(id=student_id, owner_admin_id=current_user.id).first_or_404()
 
 
 def _submission_list_query():
-    return Submission.query.filter(Submission.deleted_at.is_(None)).order_by(Submission.created_at.desc())
+    return (
+        Submission.query.join(StudentUser, Submission.student_user_id == StudentUser.id)
+        .filter(Submission.deleted_at.is_(None))
+        .filter(StudentUser.owner_admin_id == current_user.id)
+        .order_by(Submission.created_at.desc())
+    )
 
 
 def _selected_student_id() -> int | None:
@@ -72,9 +85,13 @@ def _admin_return_to_url() -> str | None:
 
 def _render_submission_list(*, student: StudentUser | None = None):
     selected_student_id = student.id if student else _selected_student_id()
+    if selected_student_id is not None and student is None:
+        owned_ids = {item.id for item in _owned_students_query().all()}
+        if selected_student_id not in owned_ids:
+            selected_student_id = None
     query = _submission_list_query()
     if selected_student_id is not None:
-        query = query.filter_by(student_user_id=selected_student_id)
+        query = query.filter(Submission.student_user_id == selected_student_id)
     pagination = paginate_query(query, page=normalize_page(request.args.get("page")))
     return render_template(
         "admin/submissions.html",
@@ -91,6 +108,16 @@ def _render_submission_list(*, student: StudentUser | None = None):
 
 def _submission_detail_query(public_id: str):
     return Submission.query.filter_by(public_id=public_id, deleted_at=None)
+
+
+def _owned_submission_or_404(public_id: str) -> Submission:
+    submission = _submission_detail_query(public_id).first_or_404()
+    owner_id = None
+    if submission.student_user is not None:
+        owner_id = submission.student_user.owner_admin_id
+    if owner_id != current_user.id:
+        abort(404)
+    return submission
 
 
 def _settings_page_context(
@@ -164,14 +191,14 @@ def submission_list():
 @admin_bp.get("/students/<int:student_id>/submissions")
 @login_required
 def student_submission_list(student_id: int):
-    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    student = _owned_student_or_404(student_id)
     return _render_submission_list(student=student)
 
 
 @admin_bp.get("/submissions/<public_id>")
 @login_required
 def submission_detail(public_id: str):
-    submission = _submission_detail_query(public_id).first_or_404()
+    submission = _owned_submission_or_404(public_id)
     return render_template(
         "admin/submission_detail.html",
         submission=submission,
@@ -182,7 +209,7 @@ def submission_detail(public_id: str):
 @admin_bp.get("/submissions/<public_id>/student-view")
 @login_required
 def submission_student_view(public_id: str):
-    submission = _submission_detail_query(public_id).first_or_404()
+    submission = _owned_submission_or_404(public_id)
     if submission.student_user is None:
         abort(404)
 
@@ -205,7 +232,7 @@ def settings_page():
 @admin_bp.post("/submissions/<public_id>/diagnose")
 @login_required
 def generate_diagnosis(public_id: str):
-    submission = _submission_detail_query(public_id).first_or_404()
+    submission = _owned_submission_or_404(public_id)
     return_to = _admin_return_to_url()
     try:
         enqueue_diagnosis_job(submission, requested_by="admin")
@@ -226,7 +253,7 @@ def generate_diagnosis(public_id: str):
 @admin_bp.post("/submissions/<public_id>/delete")
 @login_required
 def delete_submission(public_id: str):
-    submission = _submission_detail_query(public_id).first_or_404()
+    submission = _owned_submission_or_404(public_id)
     submission.mark_deleted()
     try:
         db.session.commit()
@@ -309,7 +336,7 @@ def student_list():
 @admin_bp.get("/students/<int:student_id>")
 @login_required
 def student_detail(student_id: int):
-    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    student = _owned_student_or_404(student_id)
     return render_template("admin/student_detail.html", student=student)
 
 
@@ -330,7 +357,25 @@ def create_student():
         ), 400
 
     try:
-        student = ensure_student_user(nickname=nickname, real_name=real_name, password=password)
+        existing = StudentUser.query.filter_by(nickname=nickname).first()
+        if existing is not None and existing.owner_admin_id not in (None, current_user.id):
+            flash("该学生用户名已被其他老师占用，请换一个用户名。", "error")
+            students = _student_list_query().all()
+            return render_template(
+                "admin/students.html",
+                students=students,
+                nickname=nickname,
+                real_name=real_name,
+            ), 400
+
+        student = ensure_student_user(
+            nickname=nickname,
+            real_name=real_name,
+            password=password,
+            owner_admin_id=current_user.id,
+        )
+        if student.owner_admin_id is None:
+            student.owner_admin_id = current_user.id
         db.session.add(student)
         db.session.commit()
     except SQLAlchemyError:
@@ -351,7 +396,7 @@ def create_student():
 @admin_bp.post("/students/<int:student_id>/profile")
 @login_required
 def update_student_profile(student_id: int):
-    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    student = _owned_student_or_404(student_id)
     real_name = request.form.get("real_name", "").strip()
     if not real_name:
         flash("请填写真实姓名。", "error")
@@ -370,7 +415,7 @@ def update_student_profile(student_id: int):
 @admin_bp.post("/students/<int:student_id>/reset-password")
 @login_required
 def reset_student_password(student_id: int):
-    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    student = _owned_student_or_404(student_id)
     password = request.form.get("password", "")
     if not password:
         flash("请填写新密码。", "error")
@@ -386,7 +431,7 @@ def reset_student_password(student_id: int):
 @admin_bp.post("/students/<int:student_id>/toggle-active")
 @login_required
 def toggle_student_active(student_id: int):
-    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    student = _owned_student_or_404(student_id)
     student.is_active = not student.is_active
     db.session.commit()
     flash(f"学生 {student.nickname} 已{'启用' if student.is_active else '停用'}。", "success")
@@ -396,7 +441,7 @@ def toggle_student_active(student_id: int):
 @admin_bp.post("/students/<int:student_id>/delete")
 @login_required
 def delete_student(student_id: int):
-    student = StudentUser.query.filter_by(id=student_id).first_or_404()
+    student = _owned_student_or_404(student_id)
     for submission in list(student.submissions):
         if submission.deleted_at is None:
             submission.mark_deleted()

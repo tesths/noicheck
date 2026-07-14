@@ -215,7 +215,7 @@ def test_admin_switched_model_also_applies_to_student_hint_job(app, client, monk
         app.config["AI_MODEL"] = "deepseek-v4-pro"
         app.config["DEEPSEEK_MODEL"] = "deepseek-v4-pro"
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="stu01",
             student_user=student,
@@ -342,7 +342,7 @@ def test_admin_custom_student_prompt_applies_to_student_hint_job(app, client, mo
 
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="stu01",
             student_user=student,

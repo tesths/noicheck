@@ -56,7 +56,7 @@ def test_student_pages_require_login(client):
 def test_admin_login_clears_student_session(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         db.session.add_all([admin, student])
         db.session.commit()
 
@@ -76,7 +76,7 @@ def test_admin_login_clears_student_session(app, client):
 def test_student_login_clears_admin_session(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         db.session.add_all([admin, student])
         db.session.commit()
 
@@ -156,7 +156,7 @@ def test_admin_can_create_reset_and_disable_student(app, client):
 def test_admin_can_update_student_real_name(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         db.session.add_all([admin, student])
         db.session.commit()
         student_id = student.id
@@ -178,7 +178,7 @@ def test_admin_can_update_student_real_name(app, client):
 def test_admin_can_delete_student_and_hide_related_submissions(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="stu01",
             student_user=student,
@@ -228,7 +228,7 @@ def test_admin_can_delete_student_and_hide_related_submissions(app, client):
 def test_student_management_actions_use_unified_button_style(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         db.session.add_all([admin, student])
         db.session.commit()
 
@@ -245,7 +245,7 @@ def test_student_management_actions_use_unified_button_style(app, client):
 def test_student_management_page_uses_summary_list_layout(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="mcx", real_name="马晨曦", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="mcx", real_name="马晨曦", password_hash=hash_password("pw-1"))
         db.session.add_all([admin, student])
         db.session.commit()
 
@@ -263,7 +263,7 @@ def test_student_management_page_uses_summary_list_layout(app, client):
 def test_admin_can_open_student_detail_page(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="stu01",
             student_user=student,
@@ -287,7 +287,7 @@ def test_admin_can_open_student_detail_page(app, client):
 def test_student_detail_actions_can_redirect_back_to_detail(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
         db.session.add_all([admin, student])
         db.session.commit()
         student_id = student.id
@@ -711,7 +711,7 @@ def test_teacher_review_detail_hides_teacher_result_from_student(app, client):
 def test_admin_detail_hides_student_hint_and_shows_teacher_diagnosis_for_self_check_submission(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="owner", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="owner",
             student_user=student,
@@ -801,7 +801,7 @@ def test_admin_detail_hides_student_hint_and_shows_teacher_diagnosis_for_self_ch
 def test_admin_can_queue_teacher_diagnosis_after_student_hint_succeeds(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="stu01", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="stu01",
             student_user=student,
@@ -948,7 +948,7 @@ def test_student_can_submit_followup_and_persist_messages(app, client, monkeypat
 def test_admin_detail_shows_student_followup_history(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="owner", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="owner",
             student_user=student,
@@ -995,7 +995,7 @@ def test_admin_detail_shows_student_followup_history(app, client):
 def test_admin_student_view_uses_readonly_followup_drawer(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
-        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        student = StudentUser(owner_admin=admin, nickname="owner", password_hash=hash_password("pw-1"))
         submission = Submission(
             student_name="owner",
             student_user=student,

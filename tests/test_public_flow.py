@@ -1,7 +1,7 @@
 from bs4 import BeautifulSoup
 
 from src.app.extensions import db
-from src.app.models import AdminUser, ProblemSnapshot, Submission
+from src.app.models import AdminUser, ProblemSnapshot, StudentUser, Submission
 from src.app.services.auth import hash_password
 
 
@@ -97,8 +97,15 @@ def test_admin_pages_require_login(client):
 def test_admin_can_login_and_view_submission(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(
+            nickname="xiaoming",
+            real_name="小明",
+            password_hash=hash_password("pw-1"),
+            owner_admin=admin,
+        )
         submission = Submission(
             student_name="小明",
+            student_user=student,
             problem_url="http://noi.openjudge.cn/ch0107/01/",
             code_text="int main() { return 0; }",
             problem_title="01:统计数字字符个数",
@@ -106,8 +113,7 @@ def test_admin_can_login_and_view_submission(app, client):
             fetch_status="success",
             diagnosis_status="failed",
         )
-        db.session.add(admin)
-        db.session.add(submission)
+        db.session.add_all([admin, student, submission])
         db.session.commit()
         public_id = submission.public_id
 
@@ -130,8 +136,15 @@ def test_admin_can_login_and_view_submission(app, client):
 def test_admin_submission_list_uses_simple_panel_layout(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(
+            nickname="xiaoming",
+            real_name="小明",
+            password_hash=hash_password("pw-1"),
+            owner_admin=admin,
+        )
         submission = Submission(
             student_name="小明",
+            student_user=student,
             problem_url="http://noi.openjudge.cn/ch0107/01/",
             code_text="int main() { return 0; }",
             problem_title="01:统计数字字符个数",
@@ -139,7 +152,7 @@ def test_admin_submission_list_uses_simple_panel_layout(app, client):
             student_hint_status="success",
             diagnosis_status="failed",
         )
-        db.session.add_all([admin, submission])
+        db.session.add_all([admin, student, submission])
         db.session.commit()
 
     _login_admin(client)
@@ -155,8 +168,15 @@ def test_admin_submission_list_uses_simple_panel_layout(app, client):
 def test_admin_can_queue_diagnosis_when_fetch_succeeded(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(
+            nickname="xiaoming",
+            real_name="小明",
+            password_hash=hash_password("pw-1"),
+            owner_admin=admin,
+        )
         submission = Submission(
             student_name="小明",
+            student_user=student,
             problem_url="http://noi.openjudge.cn/ch0107/01/",
             code_text="int main() { return 0; }",
             fetch_status="success",
@@ -172,7 +192,7 @@ def test_admin_can_queue_diagnosis_when_fetch_succeeded(app, client):
             sample_input_text="abc123",
             sample_output_text="3",
         )
-        db.session.add_all([admin, submission, snapshot])
+        db.session.add_all([admin, student, submission, snapshot])
         db.session.commit()
         public_id = submission.public_id
 
@@ -204,14 +224,21 @@ def test_admin_can_queue_diagnosis_when_fetch_succeeded(app, client):
 def test_admin_queues_combined_job_when_fetch_not_ready(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(
+            nickname="xiaoming",
+            real_name="小明",
+            password_hash=hash_password("pw-1"),
+            owner_admin=admin,
+        )
         submission = Submission(
             student_name="小明",
+            student_user=student,
             problem_url="http://noi.openjudge.cn/ch0107/20/",
             code_text="int main() { return 0; }",
             fetch_status="failed",
             diagnosis_status="pending",
         )
-        db.session.add_all([admin, submission])
+        db.session.add_all([admin, student, submission])
         db.session.commit()
         public_id = submission.public_id
 
@@ -243,14 +270,21 @@ def test_admin_queues_combined_job_when_fetch_not_ready(app, client):
 def test_admin_does_not_requeue_diagnosis_when_already_processing(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(
+            nickname="xiaoming",
+            real_name="小明",
+            password_hash=hash_password("pw-1"),
+            owner_admin=admin,
+        )
         submission = Submission(
             student_name="小明",
+            student_user=student,
             problem_url="http://noi.openjudge.cn/ch0107/20/",
             code_text="int main() { return 0; }",
             fetch_status="success",
             diagnosis_status="queued",
         )
-        db.session.add_all([admin, submission])
+        db.session.add_all([admin, student, submission])
         db.session.commit()
         public_id = submission.public_id
 

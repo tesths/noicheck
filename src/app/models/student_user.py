@@ -10,10 +10,12 @@ class StudentUser(db.Model):
     nickname = db.Column(db.String(80), unique=True, nullable=False, index=True)
     real_name = db.Column(db.String(80), nullable=False, default="")
     password_hash = db.Column(db.String(255), nullable=False)
+    owner_admin_id = db.Column(db.Integer, db.ForeignKey("admin_users.id"), nullable=True, index=True)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
+    owner_admin = db.relationship("AdminUser", back_populates="students")
     submissions = db.relationship("Submission", back_populates="student_user")
 
     @property

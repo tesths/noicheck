@@ -218,19 +218,43 @@ def _repair_legacy_student_users_schema(app: Flask) -> None:
         return
 
     existing_columns = {column["name"] for column in inspector.get_columns("student_users")}
-    if "real_name" in existing_columns:
-        return
-
     dialect_name = db.engine.dialect.name
-    with db.engine.begin() as connection:
-        if dialect_name == "postgresql":
-            connection.execute(text("ALTER TABLE student_users ADD COLUMN IF NOT EXISTS real_name VARCHAR(80)"))
-        else:
-            connection.execute(text("ALTER TABLE student_users ADD COLUMN real_name VARCHAR(80)"))
 
-        connection.execute(
-            text("UPDATE student_users SET real_name = '' WHERE real_name IS NULL OR real_name = ''")
-        )
+    if "real_name" not in existing_columns:
+        with db.engine.begin() as connection:
+            if dialect_name == "postgresql":
+                connection.execute(text("ALTER TABLE student_users ADD COLUMN IF NOT EXISTS real_name VARCHAR(80)"))
+            else:
+                connection.execute(text("ALTER TABLE student_users ADD COLUMN real_name VARCHAR(80)"))
+
+            connection.execute(
+                text("UPDATE student_users SET real_name = '' WHERE real_name IS NULL OR real_name = ''")
+            )
+        existing_columns.add("real_name")
+
+    if "owner_admin_id" not in existing_columns:
+        with db.engine.begin() as connection:
+            if dialect_name == "postgresql":
+                connection.execute(text("ALTER TABLE student_users ADD COLUMN IF NOT EXISTS owner_admin_id INTEGER"))
+            else:
+                connection.execute(text("ALTER TABLE student_users ADD COLUMN owner_admin_id INTEGER"))
+
+            admin_id = connection.execute(
+                text("SELECT id FROM admin_users WHERE username = :username ORDER BY id ASC LIMIT 1"),
+                {"username": "admin"},
+            ).scalar()
+            if admin_id is not None:
+                connection.execute(
+                    text(
+                        "UPDATE student_users "
+                        "SET owner_admin_id = :admin_id "
+                        "WHERE owner_admin_id IS NULL"
+                    ),
+                    {"admin_id": admin_id},
+                )
+            connection.execute(
+                text("CREATE INDEX IF NOT EXISTS ix_student_users_owner_admin_id ON student_users (owner_admin_id)")
+            )
 
 
 def _repair_postgresql_submission_id_sequence(connection, existing_columns: set[str]) -> None:
