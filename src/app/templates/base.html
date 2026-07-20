@@ -1,34 +1,36 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="coffee">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}NOI 错题诊断{% endblock %}</title>
     <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}" type="image/svg+xml">
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@5" rel="stylesheet" type="text/css">
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
   </head>
-  <body>
-    <header class="site-header">
+  <body class="min-h-screen bg-base-200 text-base-content">
+    <header class="site-header navbar bg-base-100 border-b border-base-300">
       <div class="wrap header-content">
-        <a class="brand" href="{{ url_for('public.home') }}">NOI 错题诊断</a>
+        <a class="brand btn btn-ghost" href="{{ url_for('public.home') }}">NOI 错题诊断</a>
         <nav class="header-nav">
-          <a href="{{ url_for('public.home') }}">登录入口</a>
+          <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('public.home') }}">登录入口</a>
           {% if current_student() %}
-            <a href="{{ url_for('student.submissions') }}">我的提交</a>
-            <a href="{{ url_for('student.submission_new') }}">选择提交流程</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('student.submissions') }}">我的提交</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('student.submission_new') }}">选择提交流程</a>
             <form class="nav-form" method="post" action="{{ url_for('student.logout') }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="nav-button" type="submit">退出学生端</button>
+              <button class="nav-button btn btn-ghost btn-sm" type="submit">退出学生端</button>
             </form>
           {% else %}
-            <a href="{{ url_for('student.login') }}">学生登录</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('student.login') }}">学生登录</a>
           {% endif %}
           {% if current_user.is_authenticated %}
-            <a href="{{ url_for('admin.submission_list') }}">教师后台</a>
-            <a href="{{ url_for('admin.student_list') }}">学生管理</a>
-            <a href="{{ url_for('admin.settings_page') }}">系统设置</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('admin.submission_list') }}">教师后台</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('admin.student_list') }}">学生管理</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('admin.settings_page') }}">系统设置</a>
           {% else %}
-            <a href="{{ url_for('admin.login') }}">教师后台</a>
+            <a class="nav-link btn btn-ghost btn-sm" href="{{ url_for('admin.login') }}">教师后台</a>
           {% endif %}
         </nav>
       </div>
@@ -39,7 +41,7 @@
         {% if messages %}
           <section class="flash-stack">
             {% for category, message in messages %}
-              <div class="flash flash-{{ category }}">{{ message }}</div>
+              <div class="alert {% if category == 'error' %}alert-error{% elif category == 'success' %}alert-success{% elif category == 'info' %}alert-info{% else %}alert-warning{% endif %}">{{ message }}</div>
             {% endfor %}
           </section>
         {% endif %}

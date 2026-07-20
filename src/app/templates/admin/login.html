@@ -2,19 +2,19 @@
 {% block title %}教师登录 | NOI 错题诊断{% endblock %}
 {% block content %}
 <section class="auth-shell">
-  <form class="panel auth-panel" method="post">
+  <form class="panel card bg-base-100 border border-base-300 auth-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <p class="eyebrow">教师后台</p>
     <h1>登录</h1>
-    <label class="field">
+    <label class="field fieldset">
       <span>用户名</span>
-      <input type="text" name="username" required value="{{ username if username else '' }}">
+      <input class="input" type="text" name="username" required value="{{ username if username else '' }}">
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>密码</span>
-      <input type="password" name="password" required>
+      <input class="input" type="password" name="password" required>
     </label>
-    <button class="primary-button" type="submit">进入后台</button>
+    <button class="btn btn-primary" type="submit">进入后台</button>
   </form>
 </section>
 {% endblock %}

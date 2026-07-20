@@ -2,7 +2,7 @@
   {% if followup_session and followup_session.messages %}
     <div class="followup-thread">
       {% for message in followup_session.messages %}
-        <article class="followup-message followup-message-{{ message.role }}">
+        <article class="followup-message card followup-message-{{ message.role }}">
           <p class="eyebrow">{% if message.role == "student" %}学生提问{% else %}继续引导{% endif %}</p>
           <p class="followup-message-text">{{ message.content }}</p>
           {% if message.context_text %}

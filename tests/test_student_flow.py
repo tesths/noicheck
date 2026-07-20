@@ -238,8 +238,11 @@ def test_student_management_actions_use_unified_button_style(app, client):
 
     assert response.status_code == 200
     detail_link = next(link for link in soup.select("a") if link.get_text(strip=True) == "管理学生")
-    assert "ghost-button" in detail_link.get("class", [])
-    assert "mini-button" in detail_link.get("class", [])
+    assert "btn" in detail_link.get("class", [])
+    assert "btn-outline" in detail_link.get("class", [])
+    assert "btn-sm" in detail_link.get("class", [])
+    assert "ghost-button" not in detail_link.get("class", [])
+    assert "mini-button" not in detail_link.get("class", [])
 
 
 def test_student_management_page_uses_summary_list_layout(app, client):

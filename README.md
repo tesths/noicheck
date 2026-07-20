@@ -14,6 +14,15 @@
 - 生产部署：Vercel 连接 GitHub 仓库自动部署
 - 生产数据库迁移：GitHub Actions
 
+最近一次界面与测试回归结论：
+
+- 2026-07-20 已完成全站 daisyUI 组件化视觉迁移
+- 当前主题以棕色为主，`btn-primary`、表单、表格、卡片均使用 daisyUI 默认组件形态
+- 已移除旧的自定义按钮类与大圆角 / 阴影式旧样式，保留少量结构布局 CSS
+- 已用 Playwright 检查桌面端 `1280px` 与移动端 `375px` 的按钮颜色、输入框 / 按钮对齐和横向溢出
+- 本地回归 `uv run pytest -q`：`179 passed`
+- 覆盖率回归 `uv run --with coverage coverage report --fail-under=95`：总覆盖率 `98%`
+
 最近一次稳定性回归结论：
 
 - 2026-05-17 已定点修复一轮线上 `500` 与慢请求问题
@@ -39,6 +48,7 @@
 - 提交记录软删除
 - OpenJudge 抓题与 AI 诊断异步处理
 - Queue consumer 已兼容解析对象 body、原始请求流，以及仅带 `ce-vqs*` 头的 CloudEvent 回调
+- 全站页面使用 daisyUI 组件和棕色主题，桌面 / 移动端表单操作保持对齐
 
 ## 目录结构
 
@@ -161,6 +171,13 @@ uv run flask clean-followup-history
 
 ```bash
 uv run pytest -q
+```
+
+跑覆盖率门槛：
+
+```bash
+uv run --with coverage coverage run -m pytest -q
+uv run --with coverage coverage report --fail-under=95
 ```
 
 只跑某个文件：

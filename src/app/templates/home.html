@@ -7,7 +7,7 @@
     <h1>必须登录后使用</h1>
     <p>学生登录后可以选择“自己提交”或“提交给老师”；老师登录后可以查看学生程序、AI 提示和老师版完整诊断。</p>
   </div>
-  <div class="panel form-panel">
+  <div class="panel card bg-base-100 border border-base-300 form-panel">
     <div class="panel-header">
       <div>
         <p class="eyebrow">选择身份</p>
@@ -15,8 +15,8 @@
       </div>
     </div>
     <div class="panel-actions">
-      <a class="primary-button" href="{{ url_for('student.login') }}">学生登录</a>
-      <a class="ghost-button" href="{{ url_for('admin.login') }}">教师登录</a>
+      <a class="btn btn-primary" href="{{ url_for('student.login') }}">学生登录</a>
+      <a class="btn btn-outline" href="{{ url_for('admin.login') }}">教师登录</a>
     </div>
   </div>
 </section>

@@ -71,7 +71,8 @@ def test_stylesheet_is_served(client):
     response = client.get("/styles.css")
 
     assert response.status_code == 200
-    assert b":root" in response.data
+    assert b".wrap" in response.data
+    assert b":root" not in response.data
 
 
 def test_stylesheet_does_not_use_underlines_for_buttons_or_links(client):

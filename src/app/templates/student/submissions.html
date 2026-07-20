@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 {% block title %}我的提交 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="panel">
+<section class="panel card bg-base-100 border border-base-300">
   <div class="panel-header">
     <div>
       <p class="eyebrow">学生端</p>
       <h1>{{ student.display_name }} 的提交</h1>
     </div>
     <div class="panel-actions">
-      <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
+      <a class="btn btn-primary" href="{{ url_for('student.submission_new') }}">新建提交</a>
     </div>
   </div>
 
   {% if submissions %}
     <div class="table-shell">
-      <table class="student-submission-table">
+      <table class="table student-submission-table">
         <thead>
           <tr>
             <th>时间（北京时间）</th>
@@ -31,9 +31,9 @@
               <td>{{ submission.created_at|beijing_datetime }}</td>
               <td>{{ submission.submission_mode_label }}</td>
               <td>{{ submission.problem_title or submission.problem_path or submission.problem_url }}</td>
-              <td class="status-cell"><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></td>
-              <td class="status-cell"><span class="status status-{{ submission.result_status }}">{{ submission.result_status_label }}</span></td>
-              <td class="actions-cell"><a class="ghost-button mini-button" href="{{ url_for('student.submission_detail', public_id=submission.public_id) }}">查看详情</a></td>
+              <td class="status-cell"><span class="badge">{{ submission.fetch_status_label }}</span></td>
+              <td class="status-cell"><span class="badge">{{ submission.result_status_label }}</span></td>
+              <td class="actions-cell"><a class="btn btn-outline btn-sm" href="{{ url_for('student.submission_detail', public_id=submission.public_id) }}">查看详情</a></td>
             </tr>
           {% endfor %}
         </tbody>
@@ -44,10 +44,10 @@
         <p class="pagination-info">第 {{ pagination.page }} / {{ pagination.pages }} 页，共 {{ pagination.total }} 条</p>
         <div class="pagination-actions">
           {% if prev_page_url %}
-            <a class="ghost-button mini-button" href="{{ prev_page_url }}">上一页</a>
+            <a class="btn btn-outline btn-sm" href="{{ prev_page_url }}">上一页</a>
           {% endif %}
           {% if next_page_url %}
-            <a class="ghost-button mini-button" href="{{ next_page_url }}">下一页</a>
+            <a class="btn btn-outline btn-sm" href="{{ next_page_url }}">下一页</a>
           {% endif %}
         </div>
       </div>

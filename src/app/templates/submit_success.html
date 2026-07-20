@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}提交成功 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="panel success-panel">
+<section class="panel card bg-base-100 border border-base-300 success-panel">
   <p class="eyebrow">提交成功</p>
   <h1>{{ submission.student_name }}</h1>
   <p>你的代码已经提交成功，并已进入后台排队。系统会先抓取题面，再自动继续 AI 诊断，老师稍后刷新后台即可查看结果。</p>
@@ -12,11 +12,11 @@
     </div>
     <div>
       <dt>抓题状态</dt>
-      <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
+      <dd><span class="badge">{{ submission.fetch_status_label }}</span></dd>
     </div>
     <div>
       <dt>诊断状态</dt>
-      <dd><span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span></dd>
+      <dd><span class="badge">{{ submission.diagnosis_status_label }}</span></dd>
     </div>
     <div>
       <dt>提交编号</dt>

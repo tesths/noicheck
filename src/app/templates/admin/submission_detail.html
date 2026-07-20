@@ -2,7 +2,7 @@
 {% block title %}提交详情 | NOI 错题诊断{% endblock %}
 {% block content %}
 <section class="detail-grid">
-  <article class="panel detail-hero">
+  <article class="panel card bg-base-100 border border-base-300 detail-hero">
     <div class="panel-header">
       <div>
         <p class="eyebrow">提交详情</p>
@@ -10,12 +10,12 @@
       </div>
       <div class="panel-actions">
         {% if submission.diagnosis_status in ["queued", "running"] %}
-          <button class="primary-button" type="button" disabled>后台处理中</button>
+          <button class="btn btn-primary" type="button" disabled>后台处理中</button>
         {% elif submission.diagnosis_status != "success" %}
           <form method="post" action="{{ url_for('admin.generate_diagnosis', public_id=submission.public_id) }}">
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <input type="hidden" name="next" value="{{ return_url }}">
-            <button class="primary-button" type="submit">
+            <button class="btn btn-primary" type="submit">
               {% if submission.diagnosis_status == "failed" %}重新生成 AI 诊断{% else %}生成 AI 诊断{% endif %}
             </button>
           </form>
@@ -26,11 +26,11 @@
           {% if submission.student_user_id %}
             <input type="hidden" name="student_user_id" value="{{ submission.student_user_id }}">
           {% endif %}
-          <button class="ghost-button mini-button" type="submit">删除记录</button>
+          <button class="btn btn-outline btn-sm" type="submit">删除记录</button>
         </form>
-        <a class="ghost-button mini-button" href="{{ url_for('admin.student_list') }}">学生管理</a>
-        <a class="ghost-button mini-button" href="{{ url_for('admin.settings_page') }}">系统设置</a>
-        <a class="ghost-button mini-button" href="{{ return_url }}">返回列表</a>
+        <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_list') }}">学生管理</a>
+        <a class="btn btn-outline btn-sm" href="{{ url_for('admin.settings_page') }}">系统设置</a>
+        <a class="btn btn-outline btn-sm" href="{{ return_url }}">返回列表</a>
       </div>
     </div>
     <dl class="meta-grid">
@@ -52,21 +52,21 @@
       </div>
       <div>
         <dt>抓题状态</dt>
-        <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
+        <dd><span class="badge">{{ submission.fetch_status_label }}</span></dd>
       </div>
       <div>
         <dt>老师诊断状态</dt>
-        <dd><span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span></dd>
+        <dd><span class="badge">{{ submission.diagnosis_status_label }}</span></dd>
       </div>
     </dl>
   </article>
 
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <p class="eyebrow">学生代码</p>
     <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
   </article>
 
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <p class="eyebrow">抓取到的题面</p>
     {% if submission.fetch_status in ["queued", "running"] %}
       <p class="empty-state">题面任务正在后台处理中，稍后刷新即可看到结果。</p>
@@ -102,7 +102,7 @@
     {% endif %}
   </article>
 
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <p class="eyebrow">AI 诊断</p>
     {% if submission.diagnosis_status in ["queued", "running"] %}
       <p class="empty-state">AI 诊断正在后台处理中，请稍后刷新查看。</p>
@@ -120,7 +120,7 @@
         {% if result.missing_context %}
           <div class="tag-list">
             {% for item in result.missing_context %}
-              <span class="tag">{{ item }}</span>
+              <span class="badge badge-neutral">{{ item }}</span>
             {% endfor %}
           </div>
         {% endif %}
@@ -161,14 +161,14 @@
     {% endif %}
   </article>
 
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <p class="eyebrow">学生追问记录</p>
     {% set followup_session = submission.followup_session %}
     {% set followup_empty_text = "学生还没有继续追问。" %}
     {% include "_followup_history.html" %}
   </article>
 
-  <article class="panel diagnosis-program-panel">
+  <article class="panel card bg-base-100 border border-base-300 diagnosis-program-panel">
     <p class="eyebrow">参考程序</p>
     {% if submission.diagnosis_status in ["queued", "running"] %}
       <p class="empty-state">AI 诊断仍在处理中，参考程序会在任务完成后展示。</p>

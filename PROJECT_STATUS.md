@@ -1,6 +1,6 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-05-18
+更新时间：2026-07-20
 
 ## 1. 项目目标
 
@@ -9,7 +9,7 @@
 - 学生端：登录后提交代码，获得只给提示、不直接给答案的 AI 引导。
 - 教师端：查看所有提交、题面快照、学生提示，并在需要时生成完整诊断和参考程序。
 
-当前阶段已经进入“统一登录入口 + 学生双提交流程 + 多轮追问 + 教师分流查看”的阶段。
+当前阶段已经进入“统一登录入口 + 学生双提交流程 + 多轮追问 + 教师分流查看 + daisyUI 组件化界面”的阶段。
 
 若要快速上手运行、测试或部署，优先看根目录 `README.md`。
 
@@ -47,6 +47,10 @@
 - 真站 `https://noi.bbbypw.online/` 已完成学生 self-check `5` 并发、`8` 并发回归；`8` 并发实测 `8/8` 成功，提交页 `302`、详情页 `200`。
 - 2026-05-18 已继续收敛 AI 识别耗时：学生端和教师端诊断 prompt 改为共享总字符预算，优先保留代码与核心题面，避免单次请求把多段题面各自截满导致 payload 过大。
 - 2026-05-18 真站再次完成真实链路回归：学生账号 `speed0518` 的 `self_check` 提交从点击提交到学生提示落地约 `42.4s`，`teacher_review` 提交从点击提交到教师详情出现完整诊断约 `19.7s`；两条链路均成功。
+- 2026-07-20 已完成全站 daisyUI 组件化视觉迁移：页面模板统一使用 `btn`、`card`、`table`、`badge`、`input`、`select`、`textarea` 等组件类，删除旧的自定义按钮类。
+- 2026-07-20 已将主题稳定为棕色主色，避免 CDN 默认 `btn-primary` 回退成蓝紫色。
+- 2026-07-20 已修复后台筛选、学生新建、系统设置、登录页等表单中的输入框和按钮对齐问题；桌面端与 `375px` 移动端均用 Playwright 验证无横向溢出。
+- 2026-07-20 本地回归通过：`uv run pytest -q` 为 `179 passed`，`uv run --with coverage coverage report --fail-under=95` 总覆盖率为 `98%`。
 
 目前学生端和教师端的 AI 能力已经分流：
 
@@ -108,6 +112,14 @@
 
 生产环境仍然要求使用公网 Postgres。
 生产数据库迁移支持通过 GitHub Actions 自动执行，适配 Vercel 直接连接 GitHub 仓库的部署方式。
+
+### 3.4 页面与样式
+
+- 组件体系：daisyUI v5 CDN + Tailwind browser runtime。
+- 主题入口：`src/app/templates/base.html` 设置 `data-theme="coffee"`。
+- 主题覆盖：`public/styles.css` 只覆盖 daisyUI 颜色 token 和结构布局，不再自定义组件圆角、阴影或按钮外观。
+- 主要组件：页面卡片使用 `card`，按钮使用 `btn` / `btn-primary` / `btn-outline`，表单控件使用 `input` / `select` / `textarea`，表格使用 `table`，状态使用 `badge` / `alert`。
+- 表单布局：后台短表单使用 `form-inline`，学生新建使用 `form-grid`，移动端统一回落为单列同宽布局。
 
 ## 4. 当前业务流程
 
@@ -316,6 +328,10 @@
   - AI 结果记录与 audience 分流
 - `api/queues/process-submission.js`
   - Vercel Queue consumer
+- `src/app/templates/base.html`
+  - daisyUI / Tailwind CDN、统一布局、主题入口和防重复提交脚本
+- `public/styles.css`
+  - 棕色 daisyUI 主题 token、响应式结构布局、表格和追问抽屉布局
 - `scripts/prod-db-migrate.sh`
   - 生产迁移入口，包含旧库基线补写、`db upgrade` 与历史追问清洗
 - `.env.example`
@@ -358,7 +374,10 @@
 - 追问链路新增编程问题限制，非题目相关内容直接返回统一拒答文案。
 - 修复生产迁移中 `request_token` 重复补列问题，并让追问相关迁移支持旧库幂等执行。
 - 生产迁移脚本增加 `clean-followup-history`，用于把旧版 assistant JSON 历史清洗成可直接展示的聊天文本。
-- 已完成本地 `pytest -q` 116 项通过、`ruff check` 通过，并完成 2026-05-08 线上学生端抽屉追问回归。
+- 全站页面已迁移到 daisyUI 默认组件形态，按钮、卡片、表格、徽章、表单控件均不再使用旧自定义组件类。
+- 棕色主题已通过 daisyUI token 固化，避免 `btn-primary` 显示为默认蓝紫色。
+- 后台筛选、学生管理、系统设置和登录页已完成输入框 / 按钮对齐回归，桌面端与移动端无横向溢出。
+- 已完成本地 `pytest -q` 179 项通过、覆盖率 `98%`，并完成 2026-07-20 页面视觉回归。
 
 ## 8. 部署与环境变量说明
 

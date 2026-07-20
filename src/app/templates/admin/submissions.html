@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}提交列表 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="panel">
+<section class="panel card bg-base-100 border border-base-300">
   <div class="panel-header">
     <div>
       <p class="eyebrow">教师后台</p>
@@ -9,24 +9,24 @@
     </div>
     <div class="panel-actions">
       {% if student_page %}
-        <a class="ghost-button mini-button" href="{{ url_for('admin.submission_list') }}">全部提交</a>
+        <a class="btn btn-outline btn-sm" href="{{ url_for('admin.submission_list') }}">全部提交</a>
       {% endif %}
-      <a class="ghost-button mini-button" href="{{ url_for('admin.student_list') }}">学生管理</a>
-      <a class="ghost-button mini-button" href="{{ url_for('admin.settings_page') }}">系统设置</a>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_list') }}">学生管理</a>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('admin.settings_page') }}">系统设置</a>
       <form method="post" action="{{ url_for('admin.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="ghost-button mini-button" type="submit">退出</button>
+        <button class="btn btn-outline btn-sm" type="submit">退出</button>
       </form>
     </div>
   </div>
 
-  <form class="form-panel" method="get" action="{{ url_for('admin.submission_list') if not student_page else url_for('admin.student_submission_list', student_id=student_page.id) }}">
+  <form class="form-panel form-inline" method="get" action="{{ url_for('admin.submission_list') if not student_page else url_for('admin.student_submission_list', student_id=student_page.id) }}">
     <div class="hero-copy compact-copy">
       <p class="eyebrow">提交筛选</p>
     </div>
-    <label class="field">
+    <label class="field fieldset">
       <span>学生</span>
-      <select name="student_user_id" {% if student_page %}disabled{% endif %}>
+      <select class="select" name="student_user_id" {% if student_page %}disabled{% endif %}>
         <option value="">全部学生</option>
         {% for student in students %}
           <option value="{{ student.id }}" {% if student.id == selected_student_user_id %}selected{% endif %}>{{ student.display_name }}</option>
@@ -34,13 +34,13 @@
       </select>
     </label>
     {% if not student_page %}
-      <button class="primary-button" type="submit">应用筛选</button>
+      <button class="btn btn-primary" type="submit">应用筛选</button>
     {% endif %}
   </form>
 
   {% if submissions %}
     <div class="table-shell submission-table-shell">
-      <table class="submission-list-table">
+      <table class="table submission-list-table">
         <thead>
           <tr>
             <th>提交信息</th>
@@ -63,14 +63,14 @@
               <td class="status-cell submission-status-cell">
                 <div class="submission-status-panel">
                   <div class="submission-status-list">
-                    <span class="status status-{{ submission.fetch_status }}">抓题 {{ submission.fetch_status_label }}</span>
-                    <span class="status status-{{ submission.student_hint_status }}">学生提示 {{ submission.student_hint_status_label }}</span>
-                    <span class="status status-{{ submission.diagnosis_status }}">老师诊断 {{ submission.diagnosis_status_label }}</span>
+                    <span class="badge">抓题 {{ submission.fetch_status_label }}</span>
+                    <span class="badge">学生提示 {{ submission.student_hint_status_label }}</span>
+                    <span class="badge">老师诊断 {{ submission.diagnosis_status_label }}</span>
                   </div>
                   <div class="row-actions submission-ops-line">
-                    <a class="ghost-button mini-button" href="{{ url_for('admin.submission_detail', public_id=submission.public_id, next=detail_return_to) }}">查看详情</a>
+                    <a class="btn btn-outline btn-sm" href="{{ url_for('admin.submission_detail', public_id=submission.public_id, next=detail_return_to) }}">查看详情</a>
                     {% if submission.student_user_id %}
-                      <a class="ghost-button mini-button" href="{{ url_for('admin.submission_student_view', public_id=submission.public_id, next=detail_return_to) }}">学生界面</a>
+                      <a class="btn btn-outline btn-sm" href="{{ url_for('admin.submission_student_view', public_id=submission.public_id, next=detail_return_to) }}">学生界面</a>
                     {% endif %}
                     <form method="post" action="{{ url_for('admin.delete_submission', public_id=submission.public_id) }}">
                       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -79,7 +79,7 @@
                       {% elif selected_student_user_id %}
                         <input type="hidden" name="student_user_id" value="{{ selected_student_user_id }}">
                       {% endif %}
-                      <button class="ghost-button mini-button" type="submit">删除记录</button>
+                      <button class="btn btn-outline btn-sm" type="submit">删除记录</button>
                     </form>
                   </div>
                 </div>
@@ -94,10 +94,10 @@
         <p class="pagination-info">第 {{ pagination.page }} / {{ pagination.pages }} 页，共 {{ pagination.total }} 条</p>
         <div class="pagination-actions">
           {% if prev_page_url %}
-            <a class="ghost-button mini-button" href="{{ prev_page_url }}">上一页</a>
+            <a class="btn btn-outline btn-sm" href="{{ prev_page_url }}">上一页</a>
           {% endif %}
           {% if next_page_url %}
-            <a class="ghost-button mini-button" href="{{ next_page_url }}">下一页</a>
+            <a class="btn btn-outline btn-sm" href="{{ next_page_url }}">下一页</a>
           {% endif %}
         </div>
       </div>

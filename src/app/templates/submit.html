@@ -7,21 +7,21 @@
     <h1>提交你的 OpenJudge 代码</h1>
     <p>输入姓名或昵称、OpenJudge 题目链接，再粘贴 C++ 代码。系统会在后台自动抓题并继续 AI 诊断，老师打开后台即可查看结果。</p>
   </div>
-  <form class="panel form-panel" method="post">
+  <form class="panel card bg-base-100 border border-base-300 form-panel" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label class="field">
+    <label class="field fieldset">
       <span>姓名或昵称</span>
-      <input type="text" name="student_name" maxlength="80" required value="{{ form_data.student_name if form_data else '' }}">
+      <input class="input" type="text" name="student_name" maxlength="80" required value="{{ form_data.student_name if form_data else '' }}">
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>题目链接</span>
-      <input type="url" name="problem_url" maxlength="500" required placeholder="http://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
+      <input class="input" type="url" name="problem_url" maxlength="500" required placeholder="http://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>C++ 代码</span>
-      <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
+      <textarea class="textarea" name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
     </label>
-    <button class="primary-button" type="submit">提交并开始分析</button>
+    <button class="btn btn-primary" type="submit">提交并开始分析</button>
   </form>
 </section>
 {% endblock %}

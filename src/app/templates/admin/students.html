@@ -1,45 +1,45 @@
 {% extends "base.html" %}
 {% block title %}学生管理 | NOI 错题诊断{% endblock %}
 {% block content %}
-<section class="panel">
+<section class="panel card bg-base-100 border border-base-300">
   <div class="panel-header">
     <div>
       <p class="eyebrow">教师后台</p>
       <h1>学生管理</h1>
     </div>
     <div class="panel-actions">
-      <a class="ghost-button mini-button" href="{{ url_for('admin.submission_list') }}">提交列表</a>
-      <a class="ghost-button mini-button" href="{{ url_for('admin.settings_page') }}">系统设置</a>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('admin.submission_list') }}">提交列表</a>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('admin.settings_page') }}">系统设置</a>
       <form method="post" action="{{ url_for('admin.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="ghost-button mini-button" type="submit">退出</button>
+        <button class="btn btn-outline btn-sm" type="submit">退出</button>
       </form>
     </div>
   </div>
 
-  <form class="form-panel" method="post" action="{{ url_for('admin.create_student') }}">
+  <form class="form-panel form-grid" method="post" action="{{ url_for('admin.create_student') }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="hero-copy compact-copy">
       <p class="eyebrow">新建学生</p>
     </div>
-    <label class="field">
+    <label class="field fieldset">
       <span>学生用户名</span>
-      <input type="text" name="nickname" maxlength="80" required value="{{ nickname if nickname else '' }}">
+      <input class="input" type="text" name="nickname" maxlength="80" required value="{{ nickname if nickname else '' }}">
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>真实姓名</span>
-      <input type="text" name="real_name" maxlength="80" required value="{{ real_name if real_name else '' }}">
+      <input class="input" type="text" name="real_name" maxlength="80" required value="{{ real_name if real_name else '' }}">
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>初始密码</span>
-      <input type="password" name="password" required>
+      <input class="input" type="password" name="password" required>
     </label>
-    <button class="primary-button" type="submit">保存学生</button>
+    <button class="btn btn-primary" type="submit">保存学生</button>
   </form>
 
   {% if students %}
     <div class="table-shell spaced-table">
-      <table class="student-overview-table">
+      <table class="table student-overview-table">
         <thead>
           <tr>
             <th>学生</th>
@@ -59,14 +59,14 @@
                 </div>
               </td>
               <td class="status-cell">
-                <span class="status {% if student.is_active %}status-success{% else %}status-failed{% endif %}">
+                <span class="badge {% if student.is_active %}badge-success{% else %}badge-error{% endif %}">
                   {{ "已启用" if student.is_active else "已停用" }}
                 </span>
               </td>
               <td class="student-meta-cell">{{ student.last_login_at|beijing_datetime }}</td>
               <td class="student-count-cell">{{ student.active_submission_count }}</td>
               <td class="actions-cell">
-                <a class="ghost-button mini-button" href="{{ url_for('admin.student_detail', student_id=student.id) }}">管理学生</a>
+                <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_detail', student_id=student.id) }}">管理学生</a>
               </td>
             </tr>
           {% endfor %}

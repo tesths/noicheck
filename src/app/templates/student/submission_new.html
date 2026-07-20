@@ -7,12 +7,12 @@
     <h1>选择提交流程</h1>
     <p>你可以先自己拿 AI 提示排查，也可以直接把程序提交给老师查看。</p>
   </div>
-  <div class="panel form-panel">
+  <div class="panel card bg-base-100 border border-base-300 form-panel">
     <p class="eyebrow">当前学生</p>
     <h2>{{ student.nickname }}</h2>
     <div class="panel-actions">
-      <a class="primary-button" href="{{ url_for('student.submission_new_self_check') }}">自己提交</a>
-      <a class="ghost-button" href="{{ url_for('student.submission_new_teacher_review') }}">提交给老师</a>
+      <a class="btn btn-primary" href="{{ url_for('student.submission_new_self_check') }}">自己提交</a>
+      <a class="btn btn-outline" href="{{ url_for('student.submission_new_teacher_review') }}">提交给老师</a>
     </div>
   </div>
 </section>

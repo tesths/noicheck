@@ -7,23 +7,23 @@
     <h1>{{ mode_copy.title }}</h1>
     <p>{{ mode_copy.description }}</p>
   </div>
-  <form class="panel form-panel" method="post" data-prevent-double-submit>
+  <form class="panel card bg-base-100 border border-base-300 form-panel" method="post" data-prevent-double-submit>
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <input type="hidden" name="request_token" value="{{ request_token }}">
-    <label class="field">
+    <label class="field fieldset">
       <span>当前学生</span>
-      <input type="text" value="{{ student.nickname }}" disabled>
+      <input class="input" type="text" value="{{ student.nickname }}" disabled>
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>题目链接</span>
-      <input type="url" name="problem_url" maxlength="500" required placeholder="http://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
+      <input class="input" type="url" name="problem_url" maxlength="500" required placeholder="http://noi.openjudge.cn/ch0107/01/" value="{{ form_data.problem_url if form_data else '' }}">
     </label>
-    <label class="field">
+    <label class="field fieldset">
       <span>C++ 代码</span>
-      <textarea name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
+      <textarea class="textarea" name="code_text" rows="18" required placeholder="#include <bits/stdc++.h>">{{ form_data.code_text if form_data else '' }}</textarea>
     </label>
     <div class="panel-actions">
-      <button class="primary-button" type="submit" data-submitting-text="{{ mode_copy.submitting_label }}">{{ mode_copy.submit_label }}</button>
+      <button class="btn btn-primary" type="submit" data-submitting-text="{{ mode_copy.submitting_label }}">{{ mode_copy.submit_label }}</button>
       <a class="text-link" href="{{ url_for('student.submission_new') }}">返回选择</a>
     </div>
   </form>

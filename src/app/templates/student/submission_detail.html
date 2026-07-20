@@ -12,7 +12,7 @@
 >
   <div class="detail-main-column">
     <section class="detail-grid">
-      <article class="panel detail-hero">
+      <article class="panel card bg-base-100 border border-base-300 detail-hero">
         <div class="panel-header">
           <div>
             <p class="eyebrow">{% if is_admin_preview %}学生端预览{% else %}学生端{% endif %}</p>
@@ -21,7 +21,7 @@
           <div class="panel-actions">
             {% if has_followup_drawer %}
               <button
-                class="ghost-button mini-button followup-toggle-button"
+                class="btn btn-outline btn-sm followup-toggle-button"
                 type="button"
                 data-followup-toggle
                 aria-controls="followup-drawer"
@@ -31,7 +31,7 @@
               </button>
             {% endif %}
             {% if not is_admin_preview %}
-              <a class="primary-button" href="{{ url_for('student.submission_new') }}">新建提交</a>
+              <a class="btn btn-primary" href="{{ url_for('student.submission_new') }}">新建提交</a>
             {% endif %}
             <a class="text-link" href="{{ return_url or url_for('student.submissions') }}">{% if is_admin_preview %}返回后台{% else %}返回列表{% endif %}</a>
           </div>
@@ -47,15 +47,15 @@
           </div>
           <div>
             <dt>抓题状态</dt>
-            <dd><span class="status status-{{ submission.fetch_status }}">{{ submission.fetch_status_label }}</span></dd>
+            <dd><span class="badge">{{ submission.fetch_status_label }}</span></dd>
           </div>
           <div>
             <dt>{% if submission.submission_mode == "self_check" %}学生提示状态{% else %}老师诊断状态{% endif %}</dt>
             <dd>
               {% if submission.submission_mode == "self_check" %}
-                <span class="status status-{{ submission.student_hint_status }}">{{ submission.student_hint_status_label }}</span>
+                <span class="badge">{{ submission.student_hint_status_label }}</span>
               {% else %}
-                <span class="status status-{{ submission.diagnosis_status }}">{{ submission.diagnosis_status_label }}</span>
+                <span class="badge">{{ submission.diagnosis_status_label }}</span>
               {% endif %}
             </dd>
           </div>
@@ -66,12 +66,12 @@
         </dl>
       </article>
 
-      <article class="panel">
+      <article class="panel card bg-base-100 border border-base-300">
         <p class="eyebrow">学生代码</p>
         <pre class="code-block"><code>{{ submission.code_text }}</code></pre>
       </article>
 
-      <article class="panel">
+      <article class="panel card bg-base-100 border border-base-300">
         {% if submission.submission_mode == "self_check" %}
           <p class="eyebrow">学生提示</p>
           {% if submission.student_hint_status in ["queued", "running"] %}
@@ -139,13 +139,13 @@
       data-followup-drawer
       aria-hidden="{{ 'false' if followup_open else 'true' }}"
     >
-      <section class="panel followup-drawer-panel">
+      <section class="panel card bg-base-100 border border-base-300 followup-drawer-panel">
         <div class="followup-drawer-header">
           <div>
             <p class="eyebrow">{% if is_admin_preview %}追问记录预览{% else %}继续追问{% endif %}</p>
             <h2 class="followup-drawer-title">{% if is_admin_preview %}学生追问记录{% else %}继续追问{% endif %}</h2>
           </div>
-          <button class="ghost-button mini-button" type="button" data-followup-close>关闭</button>
+          <button class="btn btn-outline btn-sm" type="button" data-followup-close>关闭</button>
         </div>
 
         {% if followup_enabled %}
@@ -170,7 +170,7 @@
             {% set followup_empty_text = "学生还没有继续追问。" %}
             {% include "_followup_history.html" %}
           </div>
-          <p class="flash flash-error followup-inline-error" id="followup-inline-error" hidden></p>
+          <p class="alert alert-error followup-inline-error" id="followup-inline-error" hidden></p>
         </section>
 
         {% if followup_enabled and not is_admin_preview %}
@@ -181,11 +181,11 @@
             action="{{ url_for('student.submission_followup', public_id=submission.public_id) }}"
           >
             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <div class="field">
+            <div class="field fieldset">
               <span>这次想问什么</span>
-              <textarea name="question_text" rows="5" placeholder="比如：为什么这里会漏掉最后一个字符？">{{ followup_form_data.question_text if followup_form_data else "" }}</textarea>
+              <textarea class="textarea" name="question_text" rows="5" placeholder="比如：为什么这里会漏掉最后一个字符？">{{ followup_form_data.question_text if followup_form_data else "" }}</textarea>
             </div>
-            <button class="primary-button" type="submit" data-submitting-text="继续思考中，请稍候…">发送追问</button>
+            <button class="btn btn-primary" type="submit" data-submitting-text="继续思考中，请稍候…">发送追问</button>
           </form>
         {% endif %}
       </section>
@@ -328,7 +328,7 @@
 
       function createFollowupMessage(role, content) {
         const article = document.createElement("article");
-        article.className = "followup-message followup-message-" + role;
+        article.className = "followup-message card followup-message-" + role;
 
         const eyebrow = document.createElement("p");
         eyebrow.className = "eyebrow";

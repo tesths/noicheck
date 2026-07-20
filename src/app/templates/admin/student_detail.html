@@ -2,15 +2,15 @@
 {% block title %}{{ student.display_name }} | 学生管理{% endblock %}
 {% block content %}
 <section class="detail-grid">
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <div class="panel-header">
       <div>
         <p class="eyebrow">学生管理</p>
         <h1>{{ student.display_name }}</h1>
       </div>
       <div class="panel-actions">
-        <a class="ghost-button mini-button" href="{{ url_for('admin.student_submission_list', student_id=student.id) }}">查看这个学生的全部提交</a>
-        <a class="ghost-button mini-button" href="{{ url_for('admin.student_list') }}">返回学生列表</a>
+        <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_submission_list', student_id=student.id) }}">查看这个学生的全部提交</a>
+        <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_list') }}">返回学生列表</a>
       </div>
     </div>
     <dl class="meta-grid">
@@ -25,7 +25,7 @@
       <div>
         <dt>账号状态</dt>
         <dd>
-          <span class="status {% if student.is_active %}status-success{% else %}status-failed{% endif %}">
+          <span class="badge {% if student.is_active %}badge-success{% else %}badge-error{% endif %}">
             {{ "已启用" if student.is_active else "已停用" }}
           </span>
         </dd>
@@ -45,41 +45,41 @@
     </dl>
   </article>
 
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <p class="eyebrow">资料修改</p>
     <form class="form-panel detail-form-panel" method="post" action="{{ url_for('admin.update_student_profile', student_id=student.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <input type="hidden" name="return_to" value="detail">
-      <label class="field">
+      <label class="field fieldset">
         <span>真实姓名</span>
-        <input type="text" name="real_name" maxlength="80" required value="{{ student.real_name }}">
+        <input class="input" type="text" name="real_name" maxlength="80" required value="{{ student.real_name }}">
       </label>
-      <button class="primary-button" type="submit">保存真实姓名</button>
+      <button class="btn btn-primary" type="submit">保存真实姓名</button>
     </form>
   </article>
 
-  <article class="panel">
+  <article class="panel card bg-base-100 border border-base-300">
     <p class="eyebrow">账号操作</p>
     <div class="student-detail-actions">
       <form class="form-panel detail-form-panel" method="post" action="{{ url_for('admin.reset_student_password', student_id=student.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="detail">
-        <label class="field">
+        <label class="field fieldset">
           <span>新密码</span>
-          <input type="password" name="password" required>
+          <input class="input" type="password" name="password" required>
         </label>
-        <button class="ghost-button" type="submit">重置密码</button>
+        <button class="btn btn-outline" type="submit">重置密码</button>
       </form>
       <form method="post" action="{{ url_for('admin.toggle_student_active', student_id=student.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="return_to" value="detail">
-        <button class="ghost-button" type="submit">
+        <button class="btn btn-outline" type="submit">
           {{ "停用这个学生账号" if student.is_active else "重新启用这个学生账号" }}
         </button>
       </form>
       <form method="post" action="{{ url_for('admin.delete_student', student_id=student.id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button class="ghost-button" type="submit">删除这个学生账号</button>
+        <button class="btn btn-outline" type="submit">删除这个学生账号</button>
       </form>
     </div>
   </article>

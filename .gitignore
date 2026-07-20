@@ -2,8 +2,12 @@
 .pytest_cache/
 .ruff_cache/
 .venv/
+.coverage
+.playwright-cli/
+.tmp/
 __pycache__/
 *.pyc
+*.egg-info/
 instance/
 dist/
 build/

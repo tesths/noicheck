@@ -331,11 +331,11 @@ def test_admin_submission_list_styles_keep_full_title_and_compact_actions(client
     assert "text-overflow: ellipsis;" not in css
     assert ".submission-ops-line {" in css
     assert "display: flex;" in css
-    assert ".submission-ops-line .ghost-button," in css
-    assert "width: auto;" in css
-    assert ".submission-ops-line .mini-button {" in css
-    assert "padding: 6px 10px;" in css
-    assert "font-size: 12px;" in css
+    assert "ghost-button" not in css
+    assert "mini-button" not in css
+    assert "primary-button" not in css
+    assert "border-radius:" not in css
+    assert "box-shadow:" not in css
     assert ".submission-status-panel {" in css
     assert ".submission-ops-line {" in css
 
@@ -359,8 +359,11 @@ def test_admin_submission_actions_use_unified_button_style(app, client):
 
     assert response.status_code == 200
     detail_link = next(link for link in soup.select("a") if link.get_text(strip=True) == "查看详情")
-    assert "ghost-button" in detail_link.get("class", [])
-    assert "mini-button" in detail_link.get("class", [])
+    assert "btn" in detail_link.get("class", [])
+    assert "btn-outline" in detail_link.get("class", [])
+    assert "btn-sm" in detail_link.get("class", [])
+    assert "ghost-button" not in detail_link.get("class", [])
+    assert "mini-button" not in detail_link.get("class", [])
 
 
 def test_admin_can_soft_delete_submission_and_hide_it_from_lists(app, client):
