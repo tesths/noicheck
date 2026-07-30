@@ -1,7 +1,7 @@
 import json
 import time
 from collections.abc import Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from openai import OpenAI
@@ -9,13 +9,13 @@ from openai import OpenAI
 from ..schemas import DiagnosisResult, StudentHintResult
 
 PROMPT_VERSION = "v2"
-STUDENT_PROMPT_VERSION = "student-v5"
+STUDENT_PROMPT_VERSION = "student-v6"
 STUDENT_FOLLOWUP_PROMPT_VERSION = "student-followup-v1"
 STUDENT_OUTPUT_CONTRACT = (
     "你必须只输出一个 JSON 对象。"
     "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
     "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
-    '输出格式示例：{"overall_assessment":"...","confidence":"medium","possible_issues":[{"title":"...","location":"...","evidence":"...","explanation":"...","suggested_fix":"..."}],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
+    '输出格式示例：{"overall_assessment":"...","confidence":"medium","reliability_level":"候选自测支持","reliability_note":"当前基于题面、样例、代码和 AI 自测推断，不能保证覆盖全部隐藏测试。","evidence_sources":["题面推断","候选自测支持"],"possible_issues":[{"title":"...","location":"...","evidence_source":"题面推断","evidence":"...","explanation":"...","suggested_fix":"...","next_action":"...","local_hint":"..."}],"self_test_cases":[{"title":"...","input_text":"...","expected_output":"...","observation_goal":"...","explanation":"...","source":"候选自测支持","reminder":"这是 AI 建议的自测，不代表覆盖全部隐藏测试。"}],"knowledge_points":["..."],"error_patterns":["..."],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
 )
 TEACHER_OUTPUT_CONTRACT = (
     "你必须只输出一个 JSON 对象。"
@@ -46,9 +46,19 @@ DEFAULT_STUDENT_SYSTEM_PROMPT = (
     "诊断必须分成两部分："
     "第一部分是诊断原因，要指出可能出错的代码位置；"
     "第二部分是学生下一步提示，要给出可操作的检查方向、思路或鼓励，但不要直接写出正确答案。"
+    "现在学生端第一屏叫自查路线，不要把纯 AI 推断包装成一定正确。"
+    "必须给出 reliability_level，取值只能是 题面推断、候选自测支持、学生反馈支持、更强证据支持。"
+    "首轮通常只能使用 题面推断 或 候选自测支持。"
+    "必须给出 reliability_note，用一句话提醒当前不能保证覆盖全部隐藏测试。"
+    "possible_issues 最多 3 条，每条都要写 evidence_source 和 next_action。"
+    "可以给很小的伪代码或局部代码片段放在 local_hint，但不能给完整 main、完整程序或大段替换代码。"
+    "必须给出 self_test_cases，最多 3 个，每个包含 title, input_text, expected_output, observation_goal, explanation, source, reminder。"
+    "如果无法可靠推出 expected_output，可以留空或写 null，但必须写 observation_goal。"
+    "自测用例只是 AI 建议的自测，不代表官方测试点，也不代表覆盖全部隐藏测试。"
+    "请给出 knowledge_points 和 error_patterns，分别用于标记知识点和错因。"
     "请输出严格 JSON，字段固定为 "
-    "overall_assessment, confidence, possible_issues, next_step_checks, encouragement_or_strategy。"
-    "possible_issues 最多 3 条，每条包含 title, location, evidence, explanation, suggested_fix。"
+    "overall_assessment, confidence, reliability_level, reliability_note, evidence_sources, possible_issues, self_test_cases, knowledge_points, error_patterns, next_step_checks, encouragement_or_strategy。"
+    "possible_issues 最多 3 条，每条包含 title, location, evidence_source, evidence, explanation, suggested_fix, next_action, local_hint。"
     "overall_assessment 必须先给总体提示诊断。"
     "possible_issues 的 explanation 和 suggested_fix 要尽量短、具体、易懂。"
     "next_step_checks 要按先后顺序告诉学生下一步做什么。"
@@ -137,6 +147,10 @@ class StudentFollowupPayload:
     selected_context_label: str | None
     selected_context_text: str | None
     conversation_history: list[dict[str, str]]
+    current_hint_reliability_level: str | None = None
+    current_hint_self_tests: list[dict[str, Any]] = field(default_factory=list)
+    current_hint_knowledge_points: list[str] = field(default_factory=list)
+    current_hint_error_patterns: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -353,6 +367,10 @@ class DeepSeekDiagnosisService:
                     "如果学生提交的内容明显不是 C++ 程序代码，请直接提醒这里只能提交题目对应的程序代码，不要继续分析算法。",
                     "如果程序只有变量定义、函数声明、空的 main、只写了读入或只写了一点骨架，也要继续给学生起步引导，不要只说代码太少。",
                     "这种情况要指出它离完成还差哪一步，并提醒先补输入、计算、判断、循环或输出里最先缺的一步。",
+                    "请把结果组织成学生第一屏可看的自查路线：可靠性提示、风险点、下一步动作和智能自测用例。",
+                    "请默认最多 3 个可复制自测输入，说明每个测试在检查什么；如果不能可靠推出输出，就写观察点。",
+                    "不要声称这些自测覆盖全部隐藏测试。",
+                    "如需代码示例，只能给 1-3 行局部片段或伪代码，不能给完整 main 或完整可提交程序。",
                     "除代码外，请所有说明都使用简体中文。",
                     f"题目链接：{payload.problem_url}",
                     f"题目标题：{payload.problem_title or '未知'}",
@@ -405,12 +423,35 @@ class DeepSeekDiagnosisService:
             f"首轮提示摘要：{payload.current_hint_summary or '暂无'}",
         ]
 
+        current_hint_reliability_level = getattr(payload, "current_hint_reliability_level", None)
+        current_hint_self_tests = getattr(payload, "current_hint_self_tests", []) or []
+        current_hint_knowledge_points = getattr(payload, "current_hint_knowledge_points", []) or []
+        current_hint_error_patterns = getattr(payload, "current_hint_error_patterns", []) or []
+
+        if current_hint_reliability_level:
+            parts.append(f"首轮可靠性等级：{current_hint_reliability_level}")
+
         if payload.current_hint_issues:
             parts.extend(
                 [
                     "首轮提示里已经指出过的可能问题：",
                     _format_followup_issues(payload.current_hint_issues),
                 ]
+            )
+
+        if current_hint_self_tests:
+            parts.extend(
+                [
+                    "首轮 AI 自测用例：",
+                    _format_followup_self_tests(current_hint_self_tests),
+                ]
+            )
+
+        if current_hint_knowledge_points or current_hint_error_patterns:
+            parts.append(
+                "首轮标签："
+                f"知识点={','.join(current_hint_knowledge_points) or '暂无'}；"
+                f"错因={','.join(current_hint_error_patterns) or '暂无'}"
             )
 
         if payload.conversation_history:
@@ -486,6 +527,25 @@ def _is_retryable_ai_error(exc: Exception) -> bool:
     return any(keyword in text for keyword in ("timeout", "tempor", "429", "502", "503", "504", "rate limit"))
 
 
+_RELIABILITY_LEVELS = {"题面推断", "候选自测支持", "学生反馈支持", "更强证据支持"}
+_RELIABILITY_ALIASES = {
+    "statement_inference": "题面推断",
+    "statement": "题面推断",
+    "题面": "题面推断",
+    "题面推断": "题面推断",
+    "candidate_self_test": "候选自测支持",
+    "self_test": "候选自测支持",
+    "候选自测": "候选自测支持",
+    "候选自测支持": "候选自测支持",
+    "student_feedback": "学生反馈支持",
+    "学生反馈": "学生反馈支持",
+    "学生反馈支持": "学生反馈支持",
+    "stronger_evidence": "更强证据支持",
+    "strong_evidence": "更强证据支持",
+    "更强证据": "更强证据支持",
+    "更强证据支持": "更强证据支持",
+}
+
 
 def _normalize_result_payload(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
@@ -527,6 +587,9 @@ def _normalize_result_payload(payload: Any) -> dict[str, Any]:
                 "evidence": str(evidence),
                 "explanation": str(overall),
                 "suggested_fix": str(fix),
+                "evidence_source": "",
+                "next_action": "",
+                "local_hint": "",
             }
         ]
 
@@ -573,13 +636,40 @@ def _normalize_student_result_payload(payload: Any) -> dict[str, Any]:
                 "evidence": str(evidence),
                 "explanation": str(overall),
                 "suggested_fix": fallback_fix,
+                "evidence_source": str(payload.get("evidence_source") or payload.get("source") or "题面推断"),
+                "next_action": fallback_fix,
+                "local_hint": "",
             }
         ]
+    self_test_cases = _normalize_self_test_cases(
+        payload.get("self_test_cases")
+        or payload.get("ai_self_test_cases")
+        or payload.get("test_cases")
+        or payload.get("自测用例")
+    )
+    reliability_level = _normalize_reliability_level(
+        payload.get("reliability_level") or payload.get("可靠性等级"),
+        has_self_tests=bool(self_test_cases),
+    )
+    reliability_note = (
+        payload.get("reliability_note")
+        or payload.get("可靠性说明")
+        or _default_reliability_note(reliability_level)
+    )
+    evidence_sources = _as_string_list(payload.get("evidence_sources") or payload.get("证据来源"))
+    if not evidence_sources:
+        evidence_sources = [reliability_level]
 
     return {
         "overall_assessment": str(overall),
         "confidence": _normalize_confidence(payload.get("confidence")),
+        "reliability_level": reliability_level,
+        "reliability_note": str(reliability_note),
+        "evidence_sources": evidence_sources,
         "possible_issues": normalized_issues,
+        "self_test_cases": self_test_cases,
+        "knowledge_points": _as_string_list(payload.get("knowledge_points") or payload.get("知识点"))[:5],
+        "error_patterns": _as_string_list(payload.get("error_patterns") or payload.get("错因标签") or payload.get("常见错因"))[:5],
         "next_step_checks": _as_string_list(payload.get("next_step_checks")),
         "encouragement_or_strategy": str(hint),
     }
@@ -594,6 +684,9 @@ def _normalize_issue(item: Any, fallback_overall: str, fallback_fix: str) -> dic
             "evidence": text,
             "explanation": text,
             "suggested_fix": str(fallback_fix),
+            "evidence_source": "",
+            "next_action": "",
+            "local_hint": "",
         }
     return {
         "title": str(item.get("title") or "可能的问题"),
@@ -601,7 +694,62 @@ def _normalize_issue(item: Any, fallback_overall: str, fallback_fix: str) -> dic
         "evidence": str(item.get("evidence") or fallback_overall),
         "explanation": str(item.get("explanation") or fallback_overall),
         "suggested_fix": str(item.get("suggested_fix") or fallback_fix),
+        "evidence_source": str(item.get("evidence_source") or item.get("source") or item.get("证据来源") or ""),
+        "next_action": str(item.get("next_action") or item.get("下一步动作") or item.get("check_action") or ""),
+        "local_hint": str(item.get("local_hint") or item.get("局部提示") or item.get("code_hint") or ""),
     }
+
+
+def _normalize_self_test_cases(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    return [_normalize_self_test_case(item) for item in value[:3]]
+
+
+def _normalize_self_test_case(item: Any) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        text = str(item)
+        return {
+            "title": "自测用例",
+            "input_text": text,
+            "expected_output": None,
+            "observation_goal": "把这个输入复制到本地运行，观察输出是否符合题意。",
+            "explanation": "这是 AI 根据当前题面给出的自测建议。",
+            "source": "候选自测支持",
+            "reminder": "这是 AI 建议的自测，不代表覆盖全部隐藏测试。",
+        }
+    expected_output = item.get("expected_output") or item.get("expected_output_text") or item.get("预期输出")
+    return {
+        "title": str(item.get("title") or item.get("name") or item.get("名称") or "自测用例"),
+        "input_text": str(item.get("input_text") or item.get("input") or item.get("输入") or ""),
+        "expected_output": str(expected_output) if expected_output is not None and str(expected_output).strip() else None,
+        "observation_goal": str(item.get("observation_goal") or item.get("观察点") or ""),
+        "explanation": str(item.get("explanation") or item.get("why") or item.get("为什么要测") or ""),
+        "source": _normalize_reliability_level(item.get("source") or item.get("来源"), has_self_tests=True),
+        "reminder": str(item.get("reminder") or item.get("提醒") or "这是 AI 建议的自测，不代表覆盖全部隐藏测试。"),
+    }
+
+
+def _normalize_reliability_level(value: Any, *, has_self_tests: bool) -> str:
+    text = str(value).strip() if value is not None else ""
+    if text in _RELIABILITY_LEVELS:
+        return text
+    normalized = text.lower().replace("-", "_").replace(" ", "_")
+    if normalized in _RELIABILITY_ALIASES:
+        return _RELIABILITY_ALIASES[normalized]
+    if text in _RELIABILITY_ALIASES:
+        return _RELIABILITY_ALIASES[text]
+    return "候选自测支持" if has_self_tests else "题面推断"
+
+
+def _default_reliability_note(reliability_level: str) -> str:
+    if reliability_level == "候选自测支持":
+        return "当前基于题面、样例、学生代码和 AI 自测推断，不能保证覆盖全部隐藏测试。"
+    if reliability_level == "学生反馈支持":
+        return "当前结合了学生运行反馈，但仍不能保证覆盖全部隐藏测试。"
+    if reliability_level == "更强证据支持":
+        return "当前结合了更强证据，仍建议继续关注边界和题意细节。"
+    return "当前仅基于题面、样例和学生代码推断，可能遗漏隐藏测试。"
 
 
 def _as_string_list(value: Any) -> list[str]:
@@ -729,8 +877,23 @@ def _format_followup_issues(issues: list[dict[str, Any]]) -> str:
             [
                 f"{index}. 标题：{issue.get('title') or '可能的问题'}",
                 f"位置：{issue.get('location') or '请重点检查相关逻辑块。'}",
+                f"来源：{issue.get('evidence_source') or '未标明'}",
                 f"说明：{issue.get('explanation') or issue.get('evidence') or ''}",
-                f"建议：{issue.get('suggested_fix') or ''}",
+                f"建议：{issue.get('next_action') or issue.get('suggested_fix') or ''}",
+            ]
+        )
+    return "\n".join(lines)
+
+
+def _format_followup_self_tests(self_tests: list[dict[str, Any]]) -> str:
+    lines: list[str] = []
+    for index, item in enumerate(self_tests[:3], start=1):
+        lines.extend(
+            [
+                f"{index}. 名称：{item.get('title') or item.get('name') or '自测用例'}",
+                f"输入：{item.get('input_text') or item.get('input') or ''}",
+                f"预期输出：{item.get('expected_output') or item.get('expected_output_text') or '未可靠推导'}",
+                f"观察点：{item.get('observation_goal') or ''}",
             ]
         )
     return "\n".join(lines)

@@ -14,6 +14,13 @@
 - 生产部署：Vercel 连接 GitHub 仓库自动部署
 - 生产数据库迁移：GitHub Actions
 
+当前生产部署状态：
+
+- 2026-07-29 通过 Vercel CLI 核查，`https://noi.bbbypw.online` 指向 `tesths-projects/noicheck`
+- 当前 production deployment：`dpl_BWcvBs2zbsMAmUxRukZ4nHaRJi5u`
+- deployment 状态：`Ready`
+- Flask 主站运行在 Python 3.12 lambda，Queue consumer 运行在 Node.js 24.x lambda，区域均为 `iad1`
+
 最近一次界面与测试回归结论：
 
 - 2026-07-20 已完成全站 daisyUI 组件化视觉迁移
@@ -33,6 +40,7 @@
 ## 文档入口
 
 - [PROJECT_STATUS.md](./PROJECT_STATUS.md)：当前架构、业务流程、数据模型和实现状态
+- [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)：生产部署、环境变量、Vercel CLI 核查、迁移和排错
 - [TASK_QUEUE.md](./TASK_QUEUE.md)：任务记录、已完成项和待办
 
 ## 主要能力
@@ -56,6 +64,7 @@
 api/
   queues/process-submission.js    Vercel Queue consumer
 public/                           静态资源
+docs/                             使用说明、部署手册和交付文档
 scripts/
   prod-db-migrate.sh              生产库迁移脚本
   prepare-legacy-migration-state.py
@@ -66,7 +75,7 @@ src/
     models/                       数据模型
     templates/                    页面模板
   index.py                        Flask 入口
-tests/                            pytest 测试
+tests/                            Python pytest 和 Node consumer 测试
 ```
 
 ## 本地开发
@@ -75,6 +84,7 @@ tests/                            pytest 测试
 
 - Python 3.12
 - `uv`
+- Node.js 24.x（用于 Vercel Queue consumer 测试）
 
 ### 2. 安装依赖
 
@@ -167,7 +177,7 @@ uv run flask clean-followup-history
 
 ## 测试
 
-跑全量测试：
+跑 Python 全量测试：
 
 ```bash
 uv run pytest -q
@@ -186,6 +196,18 @@ uv run --with coverage coverage report --fail-under=95
 uv run pytest tests/test_admin_submission_management.py -q
 ```
 
+跑 Vercel Queue consumer 测试：
+
+```bash
+node --test tests/node/process-submission.test.cjs
+```
+
+跑静态检查：
+
+```bash
+uv run ruff check
+```
+
 ## 生产部署
 
 ### Vercel
@@ -200,41 +222,42 @@ uv run pytest tests/test_admin_submission_management.py -q
 
 - 入口：`api/queues/process-submission.js`
 - topic：`noi_submission_jobs`
+- runtime：Node.js 24.x
+- maxDuration：60s
+
+用 Vercel CLI 复查当前线上部署：
+
+```bash
+vercel inspect https://noi.bbbypw.online
+vercel project inspect noicheck
+```
+
+如果本机需要代理，Vercel CLI 58 不支持 `socks5h:`，请只给 Vercel CLI 设置 HTTP 代理端口：
+
+```bash
+export http_proxy=http://127.0.0.1:21081
+export HTTP_PROXY=http://127.0.0.1:21081
+export https_proxy=http://127.0.0.1:21081
+export HTTPS_PROXY=http://127.0.0.1:21081
+```
 
 ### 必要环境变量
 
-建议直接参考 `.env.example`。生产至少要确认这些变量：
+生产环境变量以 `.env.example` 为模板，所有 `replace-*` 值都必须替换。重点确认：
 
-- `SECRET_KEY`
-- `DATABASE_URL`
-- `AI_API_KEY`
-- `AI_BASE_URL`
-- `AI_MODEL`
-- `ADMIN_INIT_USERNAME`
-- `ADMIN_INIT_PASSWORD`
-- `JOB_QUEUE_BACKEND=vercel`
-- `VERCEL_QUEUE_REGION`
-- `VERCEL_QUEUE_TOPIC=noi_submission_jobs`
-- `JOB_QUEUE_PUBLISH_TIMEOUT_SECONDS`
-- `JOB_QUEUE_PUBLISH_MAX_ATTEMPTS`
-- `JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS`
-- `INTERNAL_JOB_TOKEN`
-- `APP_BASE_URL`
-
-稳定性相关变量建议一并确认：
-
-- `SQLALCHEMY_POOL_SIZE`
-- `SQLALCHEMY_MAX_OVERFLOW`
-- `SQLALCHEMY_POOL_TIMEOUT`
-- `AI_CONCURRENCY_LIMIT_STUDENT`
-- `AI_CONCURRENCY_LIMIT_TEACHER`
-- `FETCH_CONCURRENCY_LIMIT`
+- 基础密钥：`SECRET_KEY`、`ADMIN_INIT_PASSWORD`、`INTERNAL_JOB_TOKEN`
+- 数据库：`DATABASE_URL`
+- AI 服务：`AI_API_KEY`、`AI_BASE_URL`、`AI_MODEL`
+- 队列：`JOB_QUEUE_BACKEND=vercel`、`VERCEL_QUEUE_REGION`、`VERCEL_QUEUE_TOPIC=noi_submission_jobs`
+- 主站地址：`APP_BASE_URL`
+- 稳定性参数：`JOB_QUEUE_PUBLISH_*`、`JOB_INTERNAL_*`、`SQLALCHEMY_*`、`AI_CONCURRENCY_*`、`FETCH_CONCURRENCY_LIMIT`
 
 兼容说明：
 
 - AI 配置支持新变量名 `AI_*`
 - 也兼容旧变量名 `DEEPSEEK_*`
 - 线上 Queue callback 优先使用请求头里的 `x-vercel-oidc-token` 回拉消息；仅本地联调或脱离 Vercel 环境复现时，才需要额外提供 `VERCEL_OIDC_TOKEN`
+- 详细变量说明、部署状态和排错入口见 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)
 
 ## Queue Consumer 说明
 

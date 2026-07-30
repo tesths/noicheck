@@ -9,6 +9,9 @@ class PossibleIssue(BaseModel):
     evidence: str
     explanation: str
     suggested_fix: str
+    evidence_source: str = ""
+    next_action: str = ""
+    local_hint: str = ""
 
 
 class DiagnosisResult(BaseModel):

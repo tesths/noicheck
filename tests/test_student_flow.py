@@ -606,15 +606,34 @@ def test_student_list_and_detail_are_scoped_to_owner(app, client):
                 structured_result_json={
                     "overall_assessment": "循环边界还要再检查。",
                     "confidence": "medium",
+                    "reliability_level": "候选自测支持",
+                    "reliability_note": "当前基于题面和 AI 自测推断，不能保证覆盖全部隐藏测试。",
+                    "evidence_sources": ["题面推断", "候选自测支持"],
                     "possible_issues": [
                         {
                             "title": "边界可能偏一位",
                             "location": "for 循环结束条件",
+                            "evidence_source": "题面推断",
                             "evidence": "最后一个字符可能没有被处理。",
                             "explanation": "这样会漏掉尾部数字。",
                             "suggested_fix": "重新检查循环终止条件和下标变化。",
+                            "next_action": "先用最后一位是数字的输入手推循环。",
+                            "local_hint": "i < s.length()",
                         }
                     ],
+                    "self_test_cases": [
+                        {
+                            "title": "最后一位是数字",
+                            "input_text": "abc123",
+                            "expected_output": "3",
+                            "observation_goal": "看最后一个字符是否进入循环。",
+                            "explanation": "检查循环是否漏掉末尾字符。",
+                            "source": "候选自测支持",
+                            "reminder": "这是 AI 建议的自测，不代表覆盖全部隐藏测试。",
+                        }
+                    ],
+                    "knowledge_points": ["字符串遍历"],
+                    "error_patterns": ["循环边界"],
                     "next_step_checks": ["手算 abc123 和 0 的结果。"],
                     "encouragement_or_strategy": "先别急着重写，先把样例手推一遍。",
                 },
@@ -654,8 +673,14 @@ def test_student_list_and_detail_are_scoped_to_owner(app, client):
 
     detail_response = client.get(f"/student/submissions/{owned_public_id}")
     assert detail_response.status_code == 200
+    assert "自查路线".encode() in detail_response.data
+    assert "可靠性：候选自测支持".encode() in detail_response.data
     assert "循环边界还要再检查".encode() in detail_response.data
     assert "边界可能偏一位".encode() in detail_response.data
+    assert "AI 自测用例".encode() in detail_response.data
+    assert "最后一位是数字".encode() in detail_response.data
+    assert "字符串遍历".encode() in detail_response.data
+    assert "i &lt; s.length()".encode() in detail_response.data
     assert "教师版完整诊断".encode() not in detail_response.data
     assert "correct_program".encode() not in detail_response.data
     assert "正确的完整程序".encode() not in detail_response.data

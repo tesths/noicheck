@@ -26,15 +26,33 @@ class FakeCompletions:
             {
                 "overall_assessment": "整体思路接近了，但循环边界要再核对。",
                 "confidence": "medium",
+                "reliability_level": "候选自测支持",
+                "reliability_note": "当前基于题面和 AI 自测推断，不能保证覆盖全部隐藏测试。",
+                "evidence_sources": ["题面推断", "候选自测支持"],
                 "possible_issues": [
                     {
                         "title": "可能漏掉最后一个字符",
                         "location": "主循环结束条件",
+                        "evidence_source": "题面推断",
                         "evidence": "边界值输入时可能少统计一次。",
                         "explanation": "如果循环提前结束，尾部数字不会被计入。",
                         "suggested_fix": "重点检查下标递增和循环终止条件。",
+                        "next_action": "先用最后一位是数字的输入手推一遍。",
+                        "local_hint": "i < s.length()",
                     }
                 ],
+                "self_test_cases": [
+                    {
+                        "title": "最后一位是数字",
+                        "input_text": "abc123",
+                        "expected_output": "3",
+                        "observation_goal": "看最后一个字符 3 有没有被统计。",
+                        "explanation": "检查循环是否覆盖到字符串末尾。",
+                        "source": "候选自测支持",
+                    }
+                ],
+                "knowledge_points": ["字符串遍历"],
+                "error_patterns": ["循环边界"],
                 "next_step_checks": ["先手算 abc123 和 000 的结果。"],
                 "encouragement_or_strategy": "先定位问题，再改最小一处代码。",
                 "correct_program": "#include <iostream>\nint main(){return 0;}",
@@ -89,10 +107,16 @@ def test_deepseek_service_generates_student_hint_without_reference_program():
     assert "也不要只说代码太少" in call["messages"][0]["content"]
     assert "要继续告诉学生先补哪一步" in call["messages"][0]["content"]
     assert "明确告诉学生下一步先做什么" in call["messages"][0]["content"]
+    assert "自查路线" in call["messages"][0]["content"]
+    assert "self_test_cases" in call["messages"][0]["content"]
+    assert "最多 3 个" in call["messages"][1]["content"]
     assert "语气要真诚、温和、鼓励" in call["messages"][0]["content"]
     assert "完整正确的 C++ 参考程序" not in call["messages"][1]["content"]
     assert isinstance(result, StudentHintResponse)
     assert isinstance(result.result, StudentHintResult)
+    assert result.result.reliability_level == "候选自测支持"
+    assert result.result.self_test_cases[0].title == "最后一位是数字"
+    assert result.result.knowledge_points == ["字符串遍历"]
     assert result.result.encouragement_or_strategy == "先定位问题，再改最小一处代码。"
     assert "correct_program" not in result.result.model_dump()
 
@@ -455,7 +479,7 @@ def test_internal_job_endpoint_processes_student_hint_job(app, client, monkeypat
         assert submission.student_hint_status == "success"
         assert submission.diagnosis_status == "pending"
         assert submission.latest_student_hint_run.status == "success"
-        assert submission.latest_student_hint_run.prompt_version == "student-v5"
+        assert submission.latest_student_hint_run.prompt_version == "student-v6"
         assert submission.latest_diagnosis_run is None
         assert len(student_runs) == 1
 

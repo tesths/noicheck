@@ -1,6 +1,6 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-07-20
+更新时间：2026-07-29
 
 ## 1. 项目目标
 
@@ -11,7 +11,7 @@
 
 当前阶段已经进入“统一登录入口 + 学生双提交流程 + 多轮追问 + 教师分流查看 + daisyUI 组件化界面”的阶段。
 
-若要快速上手运行、测试或部署，优先看根目录 `README.md`。
+若要快速上手运行、测试或部署，优先看根目录 `README.md`。生产部署、环境变量和排错细节见 `docs/DEPLOYMENT.md`。
 
 ## 2. 当前实现状态
 
@@ -51,6 +51,8 @@
 - 2026-07-20 已将主题稳定为棕色主色，避免 CDN 默认 `btn-primary` 回退成蓝紫色。
 - 2026-07-20 已修复后台筛选、学生新建、系统设置、登录页等表单中的输入框和按钮对齐问题；桌面端与 `375px` 移动端均用 Playwright 验证无横向溢出。
 - 2026-07-20 本地回归通过：`uv run pytest -q` 为 `179 passed`，`uv run --with coverage coverage report --fail-under=95` 总覆盖率为 `98%`。
+- 2026-07-29 已通过 Vercel CLI 复查生产部署：`https://noi.bbbypw.online` 指向 `tesths-projects/noicheck`，当前 production deployment 为 `dpl_BWcvBs2zbsMAmUxRukZ4nHaRJi5u`，状态 `Ready`。
+- 2026-07-29 已补齐部署手册、环境变量模板和 Node Queue consumer 测试说明。
 
 目前学生端和教师端的 AI 能力已经分流：
 
@@ -87,6 +89,9 @@
 - 线上队列：Vercel Queues
 - Queue consumer：`api/queues/process-submission.js`
 - Python 任务处理：`src/app/services/jobs.py`
+- 当前 Vercel production deployment：`dpl_BWcvBs2zbsMAmUxRukZ4nHaRJi5u`
+- 当前线上别名：`https://noi.bbbypw.online`、`https://noicheck.vercel.app`、`https://noicheck-tesths-projects.vercel.app`、`https://noicheck-git-main-tesths-projects.vercel.app`
+- 当前部署输出：Flask 主站为 Python 3.12 lambda，Queue consumer 为 Node.js 24.x lambda，区域均为 `iad1`
 
 当前 queue consumer 处理顺序：
 
@@ -328,6 +333,8 @@
   - AI 结果记录与 audience 分流
 - `api/queues/process-submission.js`
   - Vercel Queue consumer
+- `docs/DEPLOYMENT.md`
+  - 生产部署、Vercel CLI 核查、环境变量、迁移和排错手册
 - `src/app/templates/base.html`
   - daisyUI / Tailwind CDN、统一布局、主题入口和防重复提交脚本
 - `public/styles.css`
@@ -365,7 +372,7 @@
 - 新增 `Submission.submission_mode`，明确区分 `self_check` 和 `teacher_review`。
 - 学生端拆成“自己提交”和“提交给老师”两套表单与处理链路。
 - 教师后台列表和详情页补充提交类型、学生提示结果和老师版结果分流展示。
-- AI 配置兼容 `AI_*` 与旧 `DEEPSEEK_*`，`.env.example` 默认示例改为 OpenRouter。
+- AI 配置兼容 `AI_*` 与旧 `DEEPSEEK_*`，`.env.example` 已改为完整生产模板，并明确当前后台模型切换只支持 `deepseek-v4-flash` / `deepseek-v4-pro`。
 - 教师 prompt 升级到 `v2`、学生 prompt 升级到 `student-v5`，明确要求只输出单个 JSON 对象；学生程序即使只有空壳或简单定义，也要继续用孩子能听懂的话解释输入输出、变量接收和起步写法。
 - 解析层增加 JSON 容错：当模型偶发返回代码块或前后缀说明文字时，系统会先提取首个完整 JSON 对象再继续校验。
 - 新增学生继续追问能力，追问记录按聊天消息持久化保存。
@@ -378,10 +385,11 @@
 - 棕色主题已通过 daisyUI token 固化，避免 `btn-primary` 显示为默认蓝紫色。
 - 后台筛选、学生管理、系统设置和登录页已完成输入框 / 按钮对齐回归，桌面端与移动端无横向溢出。
 - 已完成本地 `pytest -q` 179 项通过、覆盖率 `98%`，并完成 2026-07-20 页面视觉回归。
+- 已补充 `node --test tests/node/process-submission.test.cjs` 作为 Queue consumer 的独立验证命令。
 
 ## 8. 部署与环境变量说明
 
-建议直接参考根目录 `.env.example`。
+根目录 `.env.example` 是生产环境模板，所有 `replace-*` 值都必须替换。详细说明见 `docs/DEPLOYMENT.md`。
 
 部署到 Vercel 时，至少需要确认这些变量：
 
@@ -400,6 +408,15 @@
 - `JOB_QUEUE_PUBLISH_RETRY_BACKOFF_SECONDS`
 - `INTERNAL_JOB_TOKEN`
 - `APP_BASE_URL`
+- `JOB_INTERNAL_REQUEST_TIMEOUT_SECONDS`
+- `JOB_INTERNAL_MAX_RETRIES`
+- `AI_REQUEST_TIMEOUT_SECONDS`
+- `AI_MAX_RETRIES`
+- `AI_RETRY_BACKOFF_SECONDS`
+- `AI_MAX_PROMPT_CHARS`
+- `PROBLEM_SNAPSHOT_CACHE_ENABLED`
+- `PROBLEM_SNAPSHOT_CACHE_TTL_SECONDS`
+- `ENABLE_SUBMISSION_STATUS_POLLING`
 
 补充说明：
 
@@ -408,10 +425,11 @@
 - `APP_BASE_URL` 需要指向正式站点地址。
 - 线上 Queue callback 优先依赖请求头里的 `x-vercel-oidc-token` 回拉消息；仅在本地联调真实 Queue 或脱离 Vercel 环境时，才需要显式提供 `VERCEL_OIDC_TOKEN`。
 - 若线上仍保留旧变量名，系统会继续兼容读取 `DEEPSEEK_*`。
-- 当前默认不启用额外的 OpenRouter 速度调优参数，优先保证返回内容稳定可解析。
+- 当前后台模型设置只接受 `deepseek-v4-flash` / `deepseek-v4-pro`。如果 AI 供应商要求 provider/model 形式，需要先同步更新 `src/app/services/settings.py` 的允许模型列表。
 - 若要提升高峰稳定性，应一并确认 `SQLALCHEMY_POOL_SIZE`、`SQLALCHEMY_MAX_OVERFLOW`、`SQLALCHEMY_POOL_TIMEOUT`、`AI_CONCURRENCY_LIMIT_STUDENT`、`AI_CONCURRENCY_LIMIT_TEACHER`、`FETCH_CONCURRENCY_LIMIT`。
 - `scripts/prod-db-migrate.sh` 在 `db upgrade` 后会自动执行 `uv run flask clean-followup-history`。
 - 如需先观察影响范围，可单独执行 `uv run flask clean-followup-history --dry-run`。
+- Vercel CLI 58 不支持 `socks5h:` 代理协议。需要代理时，给 Vercel CLI 设置 HTTP 代理端口 `http://127.0.0.1:21081`。
 
 ## 9. 当前已知风险
 

@@ -230,6 +230,10 @@ def prepare_student_followup(
             selected_context_label=context_label or None,
             selected_context_text=context_text or None,
             conversation_history=conversation_history,
+            current_hint_reliability_level=structured_result.get("reliability_level"),
+            current_hint_self_tests=structured_result.get("self_test_cases") or [],
+            current_hint_knowledge_points=structured_result.get("knowledge_points") or [],
+            current_hint_error_patterns=structured_result.get("error_patterns") or [],
         ),
         model_name=_ai_config()["model_name"],
     )

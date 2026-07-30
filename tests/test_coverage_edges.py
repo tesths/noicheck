@@ -1,12 +1,9 @@
-from types import SimpleNamespace
-
 import httpx
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from src.app import create_app
 from src.app.extensions import db
-from src.app.models import AdminUser, ProblemSnapshot, StudentUser, Submission, SystemSetting
+from src.app.models import AdminUser, StudentUser, Submission, SystemSetting
 from src.app.routes import public as public_routes
 from src.app.services.auth import (
     ACTIVE_ROLE_SESSION_KEY,
@@ -17,7 +14,6 @@ from src.app.services.auth import (
     load_user,
 )
 from src.app.services.job_queue import JobMessage, JobQueueError, enqueue_job
-from src.app.services.problem_fetcher import ProblemFetchError
 
 
 def _login_admin(client, username="admin", password="secret123") -> None:

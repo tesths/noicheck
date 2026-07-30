@@ -73,27 +73,85 @@
 
       <article class="panel card bg-base-100 border border-base-300">
         {% if submission.submission_mode == "self_check" %}
-          <p class="eyebrow">学生提示</p>
+          <p class="eyebrow">自查路线</p>
           {% if submission.student_hint_status in ["queued", "running"] %}
-            <p class="empty-state">学生提示正在后台处理中，请稍后刷新查看。</p>
+            <p class="empty-state">自查路线正在后台生成，请稍后刷新查看。</p>
           {% elif submission.latest_student_hint_run %}
             {% if submission.latest_student_hint_run.status == "success" %}
               {% set result = submission.latest_student_hint_run.structured_result_json %}
               <div class="diagnosis-summary">
-                <p class="eyebrow">提示摘要</p>
+                <p class="eyebrow">先从这里查</p>
                 <h2>{{ result.overall_assessment }}</h2>
-                <p class="diagnosis-summary-meta">置信度：{{ result.confidence }}</p>
+                <p class="diagnosis-summary-meta">
+                  可靠性：{{ result.reliability_level or "题面推断" }}
+                  {% if result.evidence_sources %}
+                    · 来源：{{ result.evidence_sources|join("、") }}
+                  {% endif %}
+                </p>
+                <p class="diagnosis-summary-meta">
+                  {{ result.reliability_note or "当前仅基于题面、样例和学生代码推断，可能遗漏隐藏测试。" }}
+                </p>
               </div>
+              {% if result.knowledge_points or result.error_patterns %}
+                <section class="note-block">
+                  <h3>知识点和错因标签</h3>
+                  {% if result.knowledge_points %}
+                    <div class="tag-list" aria-label="知识点">
+                      {% for item in result.knowledge_points %}
+                        <span class="badge badge-neutral">{{ item }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                  {% if result.error_patterns %}
+                    <div class="tag-list" aria-label="错因">
+                      {% for item in result.error_patterns %}
+                        <span class="badge">{{ item }}</span>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                </section>
+              {% endif %}
               {% if result.possible_issues %}
                 {% for issue in result.possible_issues %}
                   <section class="issue-card">
                     <h3>{{ loop.index }}. {{ issue.title }}</h3>
                     <p><strong>可能位置：</strong>{{ issue.location or "请重点检查相关逻辑块。" }}</p>
+                    {% if issue.evidence_source %}
+                      <p><strong>证据来源：</strong>{{ issue.evidence_source }}</p>
+                    {% endif %}
                     <p><strong>证据：</strong>{{ issue.evidence }}</p>
                     <p><strong>说明：</strong>{{ issue.explanation }}</p>
-                    <p><strong>建议：</strong>{{ issue.suggested_fix }}</p>
+                    <p><strong>怎么自查：</strong>{{ issue.next_action or issue.suggested_fix }}</p>
+                    {% if issue.local_hint %}
+                      <p><strong>局部提示：</strong><code>{{ issue.local_hint }}</code></p>
+                    {% endif %}
                   </section>
                 {% endfor %}
+              {% endif %}
+              {% if result.self_test_cases %}
+                <section class="note-block">
+                  <h3>AI 自测用例</h3>
+                  <p class="empty-state">这些是 AI 建议的自测，不代表覆盖全部隐藏测试。复制到本地运行后，可以直接在右侧追问里说你的输出。</p>
+                  {% for test_case in result.self_test_cases %}
+                    <section class="issue-card">
+                      <h3>{{ loop.index }}. {{ test_case.title }}</h3>
+                      {% if test_case.explanation %}
+                        <p><strong>检查目标：</strong>{{ test_case.explanation }}</p>
+                      {% endif %}
+                      <p><strong>来源：</strong>{{ test_case.source }}</p>
+                      <p><strong>输入：</strong></p>
+                      <pre class="inline-pre"><code>{{ test_case.input_text or "暂无可复制输入。" }}</code></pre>
+                      {% if test_case.expected_output %}
+                        <p><strong>预期输出：</strong></p>
+                        <pre class="inline-pre"><code>{{ test_case.expected_output }}</code></pre>
+                      {% endif %}
+                      {% if test_case.observation_goal %}
+                        <p><strong>观察点：</strong>{{ test_case.observation_goal }}</p>
+                      {% endif %}
+                      <p class="empty-state">{{ test_case.reminder or "这是 AI 建议的自测，不代表覆盖全部隐藏测试。" }}</p>
+                    </section>
+                  {% endfor %}
+                </section>
               {% endif %}
               {% if result.next_step_checks %}
                 <section class="note-block">
@@ -107,15 +165,15 @@
               {% endif %}
               {% if result.encouragement_or_strategy %}
                 <section class="note-block">
-                  <h3>给你的建议</h3>
+                  <h3>继续怎么问</h3>
                   <p>{{ result.encouragement_or_strategy }}</p>
                 </section>
               {% endif %}
             {% else %}
-              <p class="empty-state">{{ submission.latest_student_hint_run.error_message or "学生提示暂时未生成成功。" }}</p>
+              <p class="empty-state">{{ submission.latest_student_hint_run.error_message or "自查路线暂时未生成成功。" }}</p>
             {% endif %}
           {% else %}
-            <p class="empty-state">还没有学生提示记录。</p>
+            <p class="empty-state">还没有自查路线记录。</p>
           {% endif %}
         {% else %}
           <p class="eyebrow">老师处理</p>
