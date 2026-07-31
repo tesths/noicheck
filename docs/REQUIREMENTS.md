@@ -269,3 +269,5 @@ AI 需要结合：
 - [ADR 0010: 近期优先自查路线和 AI 自测](./adr/0010-phase-one-prioritizes-self-check-tests-anchors-and-weak-points.md)
 - [ADR 0011: 自查路线 MVP 复用学生提示链路](./adr/0011-self-check-route-mvp-reuses-student-hint-chain.md)
 - [ADR 0012: 学生端只允许局部代码帮助](./adr/0012-student-side-allows-only-local-code-help.md)
+- [ADR 0013: 任务健康先用可轮询内部端点接外部告警](./adr/0013-operations-health-uses-pollable-internal-endpoint.md)
+- [ADR 0014: 当前 MVP 不接入真实代码执行沙箱](./adr/0014-real-code-sandbox-stays-out-of-scope-for-current-mvp.md)

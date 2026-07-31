@@ -41,6 +41,7 @@
 
 - [PROJECT_STATUS.md](./PROJECT_STATUS.md)：当前架构、业务流程、数据模型和实现状态
 - [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)：生产部署、环境变量、Vercel CLI 核查、迁移和排错
+- [docs/PLATFORM_RESEARCH.md](./docs/PLATFORM_RESEARCH.md)：免费部署多个 Python 项目的平台调研结论
 - [TASK_QUEUE.md](./TASK_QUEUE.md)：任务记录、已完成项和待办
 
 ## 主要能力
@@ -53,6 +54,7 @@
 - 教师可从学生视角查看同一套追问记录抽屉（只读）
 - 教师后台学生管理：创建、批量导入、重置密码、禁用、启用（每位老师仅能管理自己创建的学生）
 - 教师后台任务健康页：按抓题、学生提示、老师诊断分类查看失败和处理中任务
+- 内部任务健康 JSON 端点：供外部监控轮询汇总状态，不暴露学生或题目明细
 - 教师后台系统设置：切换 AI 模型，分别配置老师版 / 学生版系统提示词
 - 学生端与教师端 AI 结果分流
 - 提交记录软删除

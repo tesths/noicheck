@@ -233,6 +233,71 @@ def test_admin_operations_page_classifies_owned_task_failures(app, client):
     assert "外班学生".encode() not in response.data
 
 
+def test_internal_operations_health_requires_internal_token(client):
+    response = client.get("/internal/operations/health")
+
+    assert response.status_code == 403
+    assert response.json == {"ok": False, "error": "forbidden"}
+
+
+def test_internal_operations_health_returns_privacy_safe_summary(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        failed = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:抓题失败",
+            code_text="int main() { return 0; }",
+            fetch_status="failed",
+        )
+        processing = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/02/",
+            problem_title="02:处理中",
+            code_text="int main() { return 1; }",
+            fetch_status="queued",
+            student_hint_status="running",
+        )
+        deleted_failed = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/03/",
+            problem_title="03:已删除失败",
+            code_text="int main() { return 2; }",
+            fetch_status="failed",
+        )
+        deleted_failed.mark_deleted()
+        db.session.add_all([student, failed, processing, deleted_failed])
+        db.session.commit()
+
+    response = client.get("/internal/operations/health", headers=_auth_headers())
+    fail_response = client.get("/internal/operations/health?fail_on_unhealthy=1", headers=_auth_headers())
+
+    assert response.status_code == 200
+    assert response.json["ok"] is False
+    assert response.json["status"] == "unhealthy"
+    assert response.json["summary"] == {
+        "total_submissions": 2,
+        "total_failed": 1,
+        "total_processing": 2,
+        "fetch_failed": 1,
+        "student_hint_failed": 0,
+        "teacher_diagnosis_failed": 0,
+        "fetch_processing": 1,
+        "student_hint_processing": 1,
+        "teacher_diagnosis_processing": 0,
+    }
+    response_text = response.get_data(as_text=True)
+    assert "张小明" not in response_text
+    assert "抓题失败" not in response_text
+    assert "处理中" not in response_text
+    assert "已删除失败" not in response_text
+    assert fail_response.status_code == 503
+    assert fail_response.json["status"] == "unhealthy"
+
+
 def test_admin_submission_list_is_paginated_by_20(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))

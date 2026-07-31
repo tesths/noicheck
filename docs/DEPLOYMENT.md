@@ -99,7 +99,7 @@ vercel env list production
 | `JOB_QUEUE_BACKEND` | 队列后端 | 生产设为 `vercel` |
 | `VERCEL_QUEUE_REGION` | Vercel Queue 区域 | 当前使用 `iad1` |
 | `VERCEL_QUEUE_TOPIC` | Vercel Queue topic | 当前为 `noi_submission_jobs` |
-| `INTERNAL_JOB_TOKEN` | Queue consumer 调 Flask 内部接口的鉴权 token | 必须和 Vercel 环境一致 |
+| `INTERNAL_JOB_TOKEN` | Queue consumer 和内部监控端点调用 Flask 内部接口的鉴权 token | 必须和 Vercel 环境一致，外部监控系统也要使用同一 header |
 | `APP_BASE_URL` | Flask 主站对外地址 | 生产应指向正式域名或当前 production alias |
 
 稳定性和容量相关变量：
@@ -183,6 +183,45 @@ uv run ruff check
 ```
 
 验证前先确认本机安装了 `uv` 和 Node.js 24.x。Vercel 当前项目设置也是 Node.js 24.x，Queue consumer 测试应尽量使用同一主版本。
+
+## 运维监控端点
+
+内部任务健康摘要：
+
+```bash
+curl -H "X-Internal-Job-Token: $INTERNAL_JOB_TOKEN" \
+  "$APP_BASE_URL/internal/operations/health"
+```
+
+该端点返回全站汇总数字，不包含学生姓名、题目标题、代码或失败明细。返回字段示例：
+
+```json
+{
+  "ok": false,
+  "status": "unhealthy",
+  "generated_at": "2026-07-31T08:00:00+00:00",
+  "summary": {
+    "total_submissions": 120,
+    "total_failed": 1,
+    "total_processing": 3,
+    "fetch_failed": 0,
+    "student_hint_failed": 1,
+    "teacher_diagnosis_failed": 0,
+    "fetch_processing": 1,
+    "student_hint_processing": 2,
+    "teacher_diagnosis_processing": 0
+  }
+}
+```
+
+如果外部监控需要通过 HTTP 状态直接触发告警：
+
+```bash
+curl -i -H "X-Internal-Job-Token: $INTERNAL_JOB_TOKEN" \
+  "$APP_BASE_URL/internal/operations/health?fail_on_unhealthy=1"
+```
+
+当存在失败任务时，该模式返回 `503`；只有处理中任务时仍返回 `200`，因为排队和运行中是正常异步状态。
 
 ## 线上回归清单
 
