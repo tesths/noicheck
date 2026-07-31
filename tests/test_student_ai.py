@@ -189,7 +189,18 @@ def test_deepseek_service_generates_student_followup_answer_with_context():
                     "suggested_fix": "重点检查下标递增和循环终止条件。",
                 }
             ],
-            question_text="为什么这里要检查最后一个字符？",
+            current_hint_reliability_level="候选自测支持",
+            current_hint_self_tests=[
+                {
+                    "title": "最后一位是数字",
+                    "input_text": "abc123",
+                    "expected_output": "3",
+                    "observation_goal": "看最后一个字符有没有进入循环。",
+                }
+            ],
+            current_hint_knowledge_points=["字符串遍历"],
+            current_hint_error_patterns=["循环边界"],
+            question_text="我测了第 1 个自测，输出是 2，这是为什么？",
             selected_context_label="提示摘要",
             selected_context_text="先检查循环结束条件。",
             conversation_history=[
@@ -203,7 +214,13 @@ def test_deepseek_service_generates_student_followup_answer_with_context():
     assert "继续回答学生的追问" in call["messages"][0]["content"]
     assert "不要给出完整可提交代码" in call["messages"][0]["content"]
     assert "只回答这道题相关的编程问题" in call["messages"][0]["content"]
-    assert "学生这次的问题：为什么这里要检查最后一个字符？" in call["messages"][1]["content"]
+    assert "实际输出" in call["messages"][0]["content"]
+    assert "学生反馈支持" in call["messages"][0]["content"]
+    assert "学生这次的问题：我测了第 1 个自测，输出是 2，这是为什么？" in call["messages"][1]["content"]
+    assert "首轮可靠性等级：候选自测支持" in call["messages"][1]["content"]
+    assert "首轮 AI 自测用例" in call["messages"][1]["content"]
+    assert "预期输出：3" in call["messages"][1]["content"]
+    assert "知识点=字符串遍历；错因=循环边界" in call["messages"][1]["content"]
     assert "学生引用的上下文（提示摘要）" in call["messages"][1]["content"]
     assert "我还是不懂循环为什么会少一次。" in call["messages"][1]["content"]
     assert isinstance(result, StudentFollowupResponse)

@@ -697,6 +697,24 @@ def test_ai_json_normalization_and_parsing_edges():
     assert teacher["next_step_checks"] == ["检查"]
     assert student["possible_issues"][0]["suggested_fix"] == "先从最可疑的一处开始检查。"
 
+    student_with_hints = _normalize_student_result_payload(
+        {
+            "overall_assessment": "问题",
+            "possible_issues": [
+                {
+                    "title": "局部条件",
+                    "local_hint": "```cpp\ni < s.length()\n```",
+                },
+                {
+                    "title": "完整程序",
+                    "local_hint": "#include <bits/stdc++.h>\nint main(){return 0;}",
+                },
+            ],
+        }
+    )
+    assert student_with_hints["possible_issues"][0]["local_hint"] == "i < s.length()"
+    assert student_with_hints["possible_issues"][1]["local_hint"] == ""
+
     assert _parse_json_response('prefix {"a": {"b": 1}} suffix') == {"a": {"b": 1}}
     with pytest.raises(json.JSONDecodeError):
         _parse_json_response("")
@@ -741,6 +759,23 @@ def test_ai_prompt_helpers_and_followup_rendering_edges():
     )
     assert "先盯住：边界" in rendered
     assert "你现在可以先做这几步" in rendered
+
+    forbidden_plain_text = normalize_student_followup_answer_text("#include <bits/stdc++.h>\nint main(){return 0;}")
+    assert "完整可提交程序" in forbidden_plain_text
+    assert "#include" not in forbidden_plain_text
+
+    forbidden_rendered = normalize_student_followup_answer_text(
+        json.dumps(
+            {
+                "overall_assessment": "完整正确程序如下：",
+                "next_step_checks": ["#include <iostream>\nint main(){return 0;}"],
+                "encouragement_or_strategy": "照着提交。",
+            },
+            ensure_ascii=False,
+        )
+    )
+    assert "完整可提交程序" in forbidden_rendered
+    assert "#include" not in forbidden_rendered
 
 
 def test_jobs_enqueue_failure_rolls_back_statuses(app, monkeypatch):

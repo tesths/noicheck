@@ -90,6 +90,8 @@ DEFAULT_STUDENT_FOLLOWUP_SYSTEM_PROMPT = (
     "可以比首轮提示更直接一点，但仍然要让学生自己把最后一步完成。"
     "如果学生只问某一句提示、某一段代码或某一个变量，就只解释那一小块。"
     "优先结合学生引用的上下文回答。"
+    "如果学生反馈某个 AI 自测的实际输出，要先对照该自测的预期输出或观察点，说明它支持或不支持哪个风险点。"
+    "这类回答的依据可以称为学生反馈支持，但仍然不能承诺程序一定满分或覆盖全部隐藏测试。"
     "除代码外，所有说明都必须使用简体中文。"
     "不要输出 Markdown 代码块。"
     "如果需要举例，只能给很短的代码片段或伪代码，不能给完整 main 或完整程序。"
@@ -545,6 +547,8 @@ _RELIABILITY_ALIASES = {
     "更强证据": "更强证据支持",
     "更强证据支持": "更强证据支持",
 }
+_LOCAL_HINT_FORBIDDEN_MARKERS = ("#include", "int main", "main(", "main (", "using namespace", "return 0;")
+_FORBIDDEN_STUDENT_ANSWER_MESSAGE = "这里不能直接给完整可提交程序。你可以把当前卡住的位置或自测输出发给我，我会继续帮你定位下一步。"
 
 
 def _normalize_result_payload(payload: Any) -> dict[str, Any]:
@@ -696,8 +700,31 @@ def _normalize_issue(item: Any, fallback_overall: str, fallback_fix: str) -> dic
         "suggested_fix": str(item.get("suggested_fix") or fallback_fix),
         "evidence_source": str(item.get("evidence_source") or item.get("source") or item.get("证据来源") or ""),
         "next_action": str(item.get("next_action") or item.get("下一步动作") or item.get("check_action") or ""),
-        "local_hint": str(item.get("local_hint") or item.get("局部提示") or item.get("code_hint") or ""),
+        "local_hint": _normalize_local_hint(item.get("local_hint") or item.get("局部提示") or item.get("code_hint")),
     }
+
+
+def _normalize_local_hint(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    text = _strip_code_fence(text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if len(lines) > 3:
+        return ""
+    lowered = text.lower()
+    if any(marker in lowered for marker in _LOCAL_HINT_FORBIDDEN_MARKERS):
+        return ""
+    return "\n".join(lines)
+
+
+def _strip_code_fence(text: str) -> str:
+    lines = text.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    if lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines).strip()
 
 
 def _normalize_self_test_cases(value: Any) -> list[dict[str, Any]]:
@@ -818,21 +845,29 @@ def normalize_student_followup_answer_text(raw_content: str) -> str:
     try:
         parsed = _parse_json_response(text)
     except json.JSONDecodeError:
-        return text
+        return _strip_forbidden_student_answer(text)
 
     if not isinstance(parsed, dict):
-        return text
+        return _strip_forbidden_student_answer(text)
     if not any(
         key in parsed
         for key in ("overall_assessment", "possible_issues", "next_step_checks", "encouragement_or_strategy")
     ):
-        return text
+        return _strip_forbidden_student_answer(text)
 
     try:
         result = StudentHintResult.model_validate(_normalize_student_result_payload(parsed))
     except Exception:
-        return text
-    return _render_student_followup_text(result)
+        return _strip_forbidden_student_answer(text)
+    return _strip_forbidden_student_answer(_render_student_followup_text(result))
+
+
+def _strip_forbidden_student_answer(text: str) -> str:
+    lowered = text.lower()
+    has_complete_program_shape = "#include" in lowered and ("int main" in lowered or "main(" in lowered or "main (" in lowered)
+    if has_complete_program_shape or "完整可提交程序" in text or "完整正确程序" in text:
+        return _FORBIDDEN_STUDENT_ANSWER_MESSAGE
+    return text
 
 
 def _render_student_followup_text(result: StudentHintResult) -> str:

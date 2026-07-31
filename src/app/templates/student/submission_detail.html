@@ -148,6 +148,7 @@
                       {% if test_case.observation_goal %}
                         <p><strong>观察点：</strong>{{ test_case.observation_goal }}</p>
                       {% endif %}
+                      <p class="empty-state">追问时可以这样说：我测了第 {{ loop.index }} 个自测，输出是……</p>
                       <p class="empty-state">{{ test_case.reminder or "这是 AI 建议的自测，不代表覆盖全部隐藏测试。" }}</p>
                     </section>
                   {% endfor %}

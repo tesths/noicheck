@@ -679,6 +679,7 @@ def test_student_list_and_detail_are_scoped_to_owner(app, client):
     assert "边界可能偏一位".encode() in detail_response.data
     assert "AI 自测用例".encode() in detail_response.data
     assert "最后一位是数字".encode() in detail_response.data
+    assert "我测了第 1 个自测，输出是".encode() in detail_response.data
     assert "字符串遍历".encode() in detail_response.data
     assert "i &lt; s.length()".encode() in detail_response.data
     assert "教师版完整诊断".encode() not in detail_response.data
