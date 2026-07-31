@@ -48,6 +48,7 @@
 - [已完成] 2026-07-20 完成 TDD 回归：本地 `pytest -q` 179 项通过，覆盖率 `98%` 并通过 `--fail-under=95`
 - [已完成] 2026-07-20 同步维护 README / PROJECT_STATUS / 使用说明文档，补齐 daisyUI 主题、测试和覆盖率结果
 - [已完成] 2026-07-29 通过 Vercel CLI 复查 `noicheck` 生产部署，补齐 `docs/DEPLOYMENT.md`、`.env.example`、README 和 PROJECT_STATUS 的部署与验证说明
+- [已完成] 2026-07-31 强化学生追问边界：自测卡片提示学生带输出追问，追问回答和本地提示会拦截明显完整 C++ 程序泄露
 
 ## 待办
 
