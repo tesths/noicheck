@@ -111,11 +111,29 @@ button {
   font-size: clamp(2rem, 3vw, 3rem);
 }
 
+.panel :is(h1, h2) {
+  overflow-wrap: break-word;
+  text-wrap: balance;
+}
+
 .panel h2 {
   margin: 0;
   font-size: clamp(1.5rem, 2.2vw, 2.125rem);
   font-weight: 700;
   line-height: 1.15;
+}
+
+.heading-subtext {
+  display: block;
+  margin-top: 0.375rem;
+  max-width: 100%;
+  font-size: clamp(1rem, 1.45vw, 1.25rem);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: 0;
+  opacity: 0.68;
+  overflow-wrap: anywhere;
+  text-wrap: wrap;
 }
 
 .hero-copy p,
@@ -868,6 +886,11 @@ table {
 
   .hero-copy h1,
   .panel h1 {
-    font-size: clamp(1.875rem, 12vw, 2.625rem);
+    font-size: clamp(1.75rem, 9vw, 2.25rem);
+    line-height: 1.05;
+  }
+
+  .heading-subtext {
+    font-size: 0.9375rem;
   }
 }

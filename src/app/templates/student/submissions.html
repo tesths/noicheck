@@ -5,7 +5,12 @@
   <div class="panel-header">
     <div>
       <p class="eyebrow">学生端</p>
-      <h1>{{ student.display_name }} 的提交</h1>
+      <h1>
+        {{ student.real_name or student.nickname }} 的提交
+        {% if student.real_name %}
+          <span class="heading-subtext">用户名：{{ student.nickname }}</span>
+        {% endif %}
+      </h1>
     </div>
     <div class="panel-actions">
       <a class="btn btn-primary" href="{{ url_for('student.submission_new') }}">新建提交</a>

@@ -6,7 +6,12 @@
     <div class="panel-header">
       <div>
         <p class="eyebrow">学生管理</p>
-        <h1>{{ student.display_name }}</h1>
+        <h1>
+          {{ student.real_name or student.nickname }}
+          {% if student.real_name %}
+            <span class="heading-subtext">用户名：{{ student.nickname }}</span>
+          {% endif %}
+        </h1>
       </div>
       <div class="panel-actions">
         <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_submission_list', student_id=student.id) }}">查看这个学生的全部提交</a>

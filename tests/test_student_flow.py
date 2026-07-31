@@ -600,6 +600,40 @@ def test_student_submission_list_styles_center_table_cells(client):
     assert "vertical-align: middle;" in css
 
 
+def test_panel_headings_wrap_long_names_on_mobile(client):
+    response = client.get("/styles.css")
+    css = response.get_data(as_text=True)
+
+    assert response.status_code == 200
+    assert ".panel :is(h1, h2) {" in css
+    assert "overflow-wrap: break-word;" in css
+    assert ".heading-subtext {" in css
+    assert "overflow-wrap: anywhere;" in css
+
+
+def test_student_submission_list_separates_long_username_from_title(app, client):
+    with app.app_context():
+        student = StudentUser(
+            nickname="browser_student_e2e_long_name",
+            real_name="浏览器测试学生E2E",
+            password_hash=hash_password("student-pass-123"),
+        )
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client, "browser_student_e2e_long_name", "student-pass-123")
+    response = client.get("/student/submissions")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    title = soup.select_one(".panel-header h1")
+    assert title is not None
+    assert "浏览器测试学生E2E 的提交" in title.get_text(" ", strip=True)
+    subtitle = title.select_one(".heading-subtext")
+    assert subtitle is not None
+    assert subtitle.get_text(strip=True) == "用户名：browser_student_e2e_long_name"
+
+
 def test_student_new_page_shows_two_flow_options(app, client):
     with app.app_context():
         student = StudentUser(nickname="小明", password_hash=hash_password("pass-123"))
