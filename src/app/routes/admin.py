@@ -24,6 +24,7 @@ from ..services.settings import (
     set_ai_prompts,
     set_active_ai_model,
 )
+from ..services.weak_points import build_student_weak_point_profile
 from .student import _followup_drawer_open_value
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -337,7 +338,11 @@ def student_list():
 @login_required
 def student_detail(student_id: int):
     student = _owned_student_or_404(student_id)
-    return render_template("admin/student_detail.html", student=student)
+    return render_template(
+        "admin/student_detail.html",
+        student=student,
+        weak_point_profile=build_student_weak_point_profile(student),
+    )
 
 
 @admin_bp.post("/students")

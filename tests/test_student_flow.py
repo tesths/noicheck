@@ -287,6 +287,105 @@ def test_admin_can_open_student_detail_page(app, client):
     assert "查看这个学生的全部提交".encode() in response.data
 
 
+def test_admin_student_detail_shows_repeated_weak_point_evidence(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        student = StudentUser(owner_admin=admin, nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        submission_a = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            code_text="int main() { return 0; }",
+            student_hint_status="success",
+        )
+        submission_b = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/02/",
+            problem_title="02:字符环",
+            code_text="int main() { return 1; }",
+            student_hint_status="success",
+        )
+        deleted_submission = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/03/",
+            problem_title="03:已删除提交",
+            code_text="int main() { return 2; }",
+            student_hint_status="success",
+        )
+        deleted_submission.mark_deleted()
+        db.session.add_all([admin, student, submission_a, submission_b, deleted_submission])
+        db.session.flush()
+        db.session.add_all(
+            [
+                DiagnosisRun(
+                    submission=submission_a,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["字符串遍历"],
+                        "error_patterns": ["循环边界"],
+                    },
+                    created_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+                ),
+                DiagnosisRun(
+                    submission=submission_a,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="failed",
+                    structured_result_json={
+                        "knowledge_points": ["不应出现"],
+                        "error_patterns": ["失败结果"],
+                    },
+                    created_at=datetime(2026, 5, 2, tzinfo=timezone.utc),
+                ),
+                DiagnosisRun(
+                    submission=submission_b,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["字符串遍历", "条件判断"],
+                        "error_patterns": ["循环边界"],
+                    },
+                ),
+                DiagnosisRun(
+                    submission=deleted_submission,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["数组下标"],
+                        "error_patterns": ["越界访问"],
+                    },
+                ),
+            ]
+        )
+        db.session.commit()
+        student_id = student.id
+
+    _login_admin(client)
+    response = client.get(f"/admin/students/{student_id}")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    weak_point_panel = soup.select_one("[data-testid='weak-point-profile']")
+    assert weak_point_panel is not None
+    assert "薄弱点画像".encode() in response.data
+    assert "字符串遍历".encode() in response.data
+    assert "循环边界".encode() in response.data
+    assert "出现 2 次".encode() in response.data
+    assert "01:统计数字字符个数".encode() in response.data
+    assert "02:字符环".encode() in response.data
+    assert "不应出现".encode() not in response.data
+    assert "失败结果".encode() not in response.data
+    assert "数组下标".encode() not in response.data
+    assert "越界访问".encode() not in response.data
+
+
 def test_student_detail_actions_can_redirect_back_to_detail(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
