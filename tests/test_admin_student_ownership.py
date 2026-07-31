@@ -124,6 +124,63 @@ def test_create_student_assigns_current_teacher(app, client):
         assert student.real_name == "新同学"
 
 
+def test_teacher_can_bulk_import_students(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        teacher = AdminUser(username="pw", password_hash=hash_password("123456"))
+        db.session.add_all([admin, teacher])
+        db.session.commit()
+        teacher_id = teacher.id
+
+    _login(client, "pw", "123456")
+    response = client.post(
+        "/admin/students/bulk-import",
+        data={
+            "students_text": "stu01,张小明,pw-001\nstu02,李小红,pw-002",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    with app.app_context():
+        students = StudentUser.query.order_by(StudentUser.nickname).all()
+        assert [student.nickname for student in students] == ["stu01", "stu02"]
+        assert [student.real_name for student in students] == ["张小明", "李小红"]
+        assert {student.owner_admin_id for student in students} == {teacher_id}
+
+
+def test_teacher_bulk_import_rejects_other_teacher_usernames_atomically(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        teacher = AdminUser(username="pw", password_hash=hash_password("123456"))
+        existing = StudentUser(
+            nickname="taken",
+            real_name="旧学生",
+            password_hash=hash_password("s1"),
+            owner_admin=admin,
+        )
+        db.session.add_all([admin, teacher, existing])
+        db.session.commit()
+
+    _login(client, "pw", "123456")
+    response = client.post(
+        "/admin/students/bulk-import",
+        data={
+            "students_text": "fresh,新同学,pw-001\ntaken,抢名学生,pw-002",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 400
+    assert "taken".encode() in response.data
+    assert "其他老师占用".encode() in response.data
+    with app.app_context():
+        assert StudentUser.query.filter_by(nickname="fresh").first() is None
+        student = StudentUser.query.filter_by(nickname="taken").one()
+        assert student.real_name == "旧学生"
+        assert student.owner_admin.username == "admin"
+
+
 def test_teacher_cannot_claim_other_teachers_student_username(app, client):
     with app.app_context():
         admin = AdminUser(username="admin", password_hash=hash_password("secret123"))

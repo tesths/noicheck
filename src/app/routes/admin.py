@@ -1,3 +1,4 @@
+import csv
 from urllib.parse import urlsplit
 
 from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
@@ -138,6 +139,56 @@ def _student_redirect_response(student_id: int):
     if request.form.get("return_to", "").strip() == "detail":
         return redirect(url_for("admin.student_detail", student_id=student_id))
     return redirect(url_for("admin.student_list"))
+
+
+def _parse_bulk_student_rows(raw_text: str) -> tuple[list[dict[str, str | int]], list[str]]:
+    rows: list[dict[str, str | int]] = []
+    errors: list[str] = []
+    seen_nicknames: dict[str, int] = {}
+
+    for line_number, csv_row in enumerate(csv.reader(raw_text.splitlines()), start=1):
+        if not csv_row or all(not cell.strip() for cell in csv_row):
+            continue
+        if len(csv_row) == 1 and "，" in csv_row[0]:
+            csv_row = csv_row[0].split("，")
+        if len(csv_row) != 3:
+            errors.append(f"第 {line_number} 行：请使用 用户名,真实姓名,初始密码。")
+            continue
+
+        nickname, real_name, password = [cell.strip() for cell in csv_row]
+        if not nickname or not real_name or not password:
+            errors.append(f"第 {line_number} 行：用户名、真实姓名和初始密码都不能为空。")
+            continue
+        if len(nickname) > 80 or len(real_name) > 80:
+            errors.append(f"第 {line_number} 行：用户名和真实姓名不能超过 80 个字符。")
+            continue
+        if nickname in seen_nicknames:
+            errors.append(f"第 {line_number} 行：用户名 {nickname} 与第 {seen_nicknames[nickname]} 行重复。")
+            continue
+
+        seen_nicknames[nickname] = line_number
+        rows.append(
+            {
+                "line_number": line_number,
+                "nickname": nickname,
+                "real_name": real_name,
+                "password": password,
+            }
+        )
+
+    if not rows and not errors:
+        errors.append("请先粘贴学生名单。")
+    return rows, errors
+
+
+def _validate_bulk_student_ownership(rows: list[dict[str, str | int]]) -> list[str]:
+    errors: list[str] = []
+    for row in rows:
+        nickname = str(row["nickname"])
+        existing = StudentUser.query.filter_by(nickname=nickname).first()
+        if existing is not None and existing.owner_admin_id not in (None, current_user.id):
+            errors.append(f"第 {row['line_number']} 行：用户名 {nickname} 已被其他老师占用。")
+    return errors
 
 
 def _delete_redirect_response():
@@ -343,6 +394,45 @@ def student_detail(student_id: int):
         student=student,
         weak_point_profile=build_student_weak_point_profile(student),
     )
+
+
+@admin_bp.post("/students/bulk-import")
+@login_required
+def bulk_import_students():
+    raw_text = request.form.get("students_text", "")
+    rows, errors = _parse_bulk_student_rows(raw_text)
+    if not errors:
+        errors.extend(_validate_bulk_student_ownership(rows))
+
+    if errors:
+        return (
+            render_template(
+                "admin/students.html",
+                students=_student_list_query().all(),
+                bulk_import_errors=errors,
+            ),
+            400,
+        )
+
+    try:
+        for row in rows:
+            student = ensure_student_user(
+                nickname=str(row["nickname"]),
+                real_name=str(row["real_name"]),
+                password=str(row["password"]),
+                owner_admin_id=current_user.id,
+            )
+            if student.owner_admin_id is None:
+                student.owner_admin_id = current_user.id
+            db.session.add(student)
+        db.session.commit()
+    except SQLAlchemyError:
+        db.session.rollback()
+        flash("批量导入学生失败，请稍后再试。", "error")
+        return redirect(url_for("admin.student_list"))
+
+    flash(f"已导入 {len(rows)} 个学生账号。", "success")
+    return redirect(url_for("admin.student_list"))
 
 
 @admin_bp.post("/students")

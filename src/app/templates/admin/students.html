@@ -37,6 +37,29 @@
     <button class="btn btn-primary" type="submit">保存学生</button>
   </form>
 
+  <form class="form-panel" method="post" action="{{ url_for('admin.bulk_import_students') }}" data-prevent-double-submit>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="hero-copy compact-copy">
+      <p class="eyebrow">批量导入学生</p>
+      <p class="table-note">每行 1 个学生，格式：学生用户名,真实姓名,初始密码。导入前会整体校验，任意一行错误都不会写入。</p>
+    </div>
+    <label class="field fieldset">
+      <span>学生名单</span>
+      <textarea class="textarea" name="students_text" rows="5" placeholder="stu01,学生一,pw-001
+stu02,学生二,pw-002"></textarea>
+    </label>
+    {% if bulk_import_errors %}
+      <div class="alert alert-error">
+        <ul>
+          {% for error in bulk_import_errors %}
+            <li>{{ error }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+    <button class="btn btn-outline" type="submit" data-submitting-text="正在导入">批量导入学生</button>
+  </form>
+
   {% if students %}
     <div class="table-shell spaced-table">
       <table class="table student-overview-table">
