@@ -146,6 +146,18 @@ def _existing_submission_for_request(*, student_id: int, request_token: str) -> 
     ).first()
 
 
+def _mark_submission_queue_failure(*, public_id: str, submission_mode: str) -> None:
+    saved_submission = Submission.query.filter_by(public_id=public_id, deleted_at=None).first()
+    if saved_submission is None:
+        return
+
+    if submission_mode == "self_check":
+        saved_submission.student_hint_status = "failed"
+    else:
+        saved_submission.diagnosis_status = "failed"
+    db.session.commit()
+
+
 def _student_submission_detail_query(*, student_id: int, public_id: str):
     return Submission.query.filter_by(
         public_id=public_id,
@@ -294,13 +306,13 @@ def _create_student_submission(*, submission_mode: str):
     except (JobQueueError, SQLAlchemyError):
         db.session.rollback()
         current_app.logger.exception("学生提交后排队后台任务失败")
+        try:
+            _mark_submission_queue_failure(public_id=submission_public_id, submission_mode=submission_mode)
+        except SQLAlchemyError:
+            db.session.rollback()
+            current_app.logger.exception("保存学生提交排队失败状态失败")
         flash("提交记录已保存，但后台分析排队失败，请稍后重试或联系老师。", "error")
-        return _render_submission_form(
-            student=student,
-            submission_mode=submission_mode,
-            form_data=form_data,
-            status_code=500,
-        )
+        return redirect(url_for("student.submission_detail", public_id=submission_public_id))
 
     return redirect(url_for("student.submission_detail", public_id=submission_public_id))
 

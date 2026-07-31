@@ -76,6 +76,12 @@
           <p class="eyebrow">自查路线</p>
           {% if submission.student_hint_status in ["queued", "running"] %}
             <p class="empty-state">自查路线正在后台生成，请稍后刷新查看。</p>
+          {% elif submission.student_hint_status == "failed" %}
+            {% if submission.latest_student_hint_run and submission.latest_student_hint_run.error_message %}
+              <p class="empty-state">{{ submission.latest_student_hint_run.error_message }}</p>
+            {% else %}
+              <p class="empty-state">自查路线暂时未生成成功，请稍后重试或联系老师。</p>
+            {% endif %}
           {% elif submission.latest_student_hint_run %}
             {% if submission.latest_student_hint_run.status == "success" %}
               {% set result = submission.latest_student_hint_run.structured_result_json %}

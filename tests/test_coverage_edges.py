@@ -402,10 +402,47 @@ def test_student_submission_queue_failure_reports_saved_record_problem(app, clie
             "problem_url": "http://noi.openjudge.cn/ch0107/01/",
             "code_text": "int main(){}",
         },
+        follow_redirects=True,
     )
 
-    assert response.status_code == 500
+    assert response.status_code == 200
     assert "后台分析排队失败".encode() in response.data
+    assert "自查路线暂时未生成成功".encode() in response.data
+
+    with app.app_context():
+        submission = Submission.query.filter_by(request_token="tok-queue-fail").one()
+        assert submission.student_hint_status == "failed"
+
+
+def test_student_teacher_review_queue_failure_marks_teacher_task_failed(app, client, monkeypatch):
+    with app.app_context():
+        student = StudentUser(nickname="stu01", real_name="张小明", password_hash=hash_password("pw-1"))
+        db.session.add(student)
+        db.session.commit()
+
+    _login_student(client)
+    monkeypatch.setattr(
+        "src.app.routes.student.enqueue_diagnosis_job",
+        lambda *args, **kwargs: (_ for _ in ()).throw(JobQueueError("queue down")),
+    )
+
+    response = client.post(
+        "/student/submissions/new/teacher-review",
+        data={
+            "request_token": "tok-teacher-queue-fail",
+            "problem_url": "http://noi.openjudge.cn/ch0107/01/",
+            "code_text": "int main(){}",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert "后台分析排队失败".encode() in response.data
+    assert "老师版诊断暂时失败".encode() in response.data
+
+    with app.app_context():
+        submission = Submission.query.filter_by(request_token="tok-teacher-queue-fail").one()
+        assert submission.diagnosis_status == "failed"
 
 
 def test_student_submission_duplicate_request_token_opens_existing_record(app, client, monkeypatch):
