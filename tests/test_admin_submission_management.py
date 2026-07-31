@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from bs4 import BeautifulSoup
 
 from src.app.extensions import db
-from src.app.models import AdminUser, DiagnosisRun, Submission, StudentUser
+from src.app.models import AdminUser, DiagnosisRun, ProblemSnapshot, Submission, StudentUser
 from src.app.services.auth import hash_password
 
 
@@ -117,6 +117,120 @@ def test_admin_can_view_a_single_students_submission_history(app, client):
     assert "张小明（stu01）".encode() in response.data
     assert "stu01".encode() in response.data
     assert response.data.count("查看详情".encode()) == 2
+
+
+def test_admin_operations_page_classifies_owned_task_failures(app, client):
+    with app.app_context():
+        admin = AdminUser(username="admin", password_hash=hash_password("secret123"))
+        other_admin = AdminUser(username="other", password_hash=hash_password("secret123"))
+        student = StudentUser(
+            owner_admin=admin,
+            nickname="stu01",
+            real_name="张小明",
+            password_hash=hash_password("pw-1"),
+        )
+        other_student = StudentUser(
+            owner_admin=other_admin,
+            nickname="other",
+            real_name="外班学生",
+            password_hash=hash_password("pw-2"),
+        )
+        fetch_failed = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:抓题失败",
+            code_text="int main() { return 0; }",
+            fetch_status="failed",
+        )
+        student_failed = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/02/",
+            problem_title="02:学生提示失败",
+            code_text="int main() { return 1; }",
+            fetch_status="success",
+            student_hint_status="failed",
+        )
+        teacher_failed = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/03/",
+            problem_title="03:老师诊断失败",
+            code_text="int main() { return 2; }",
+            fetch_status="success",
+            diagnosis_status="failed",
+        )
+        processing = Submission(
+            student_name="stu01",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/04/",
+            problem_title="04:处理中",
+            code_text="int main() { return 3; }",
+            fetch_status="queued",
+            student_hint_status="running",
+        )
+        other_failed = Submission(
+            student_name="other",
+            student_user=other_student,
+            problem_url="http://noi.openjudge.cn/ch0107/05/",
+            problem_title="05:外班失败",
+            code_text="int main() { return 4; }",
+            fetch_status="failed",
+        )
+        db.session.add_all(
+            [
+                admin,
+                other_admin,
+                student,
+                other_student,
+                fetch_failed,
+                student_failed,
+                teacher_failed,
+                processing,
+                other_failed,
+            ]
+        )
+        db.session.flush()
+        db.session.add_all(
+            [
+                ProblemSnapshot(
+                    submission=fetch_failed,
+                    normalized_url=fetch_failed.problem_url,
+                    fetch_error="OpenJudge 抓题超时",
+                ),
+                DiagnosisRun(
+                    submission=student_failed,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="failed",
+                    error_message="学生提示 AI 超时",
+                ),
+                DiagnosisRun(
+                    submission=teacher_failed,
+                    audience="teacher",
+                    model_name="deepseek-v4-flash",
+                    status="failed",
+                    error_message="老师诊断 JSON 解析失败",
+                ),
+            ]
+        )
+        db.session.commit()
+
+    _login_admin(client)
+    response = client.get("/admin/operations")
+
+    assert response.status_code == 200
+    assert "任务健康".encode() in response.data
+    assert "抓题失败".encode() in response.data
+    assert "学生提示失败".encode() in response.data
+    assert "老师诊断失败".encode() in response.data
+    assert "OpenJudge 抓题超时".encode() in response.data
+    assert "学生提示 AI 超时".encode() in response.data
+    assert "老师诊断 JSON 解析失败".encode() in response.data
+    assert "处理中任务".encode() in response.data
+    assert "外班失败".encode() not in response.data
+    assert "外班学生".encode() not in response.data
 
 
 def test_admin_submission_list_is_paginated_by_20(app, client):

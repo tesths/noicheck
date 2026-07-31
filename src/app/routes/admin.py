@@ -16,6 +16,7 @@ from ..services.auth import (
 )
 from ..services.job_queue import JobQueueError
 from ..services.jobs import enqueue_diagnosis_job
+from ..services.operations import build_operation_health_report
 from ..services.pagination import paginate_query, normalize_page
 from ..services.settings import (
     ALLOWED_AI_MODELS,
@@ -279,6 +280,13 @@ def submission_student_view(public_id: str):
 @login_required
 def settings_page():
     return render_template("admin/settings.html", **_settings_page_context())
+
+
+@admin_bp.get("/operations")
+@login_required
+def operations_page():
+    report = build_operation_health_report(_submission_list_query().all())
+    return render_template("admin/operations.html", report=report)
 
 
 @admin_bp.post("/submissions/<public_id>/diagnose")

@@ -12,6 +12,7 @@
         <a class="btn btn-outline btn-sm" href="{{ url_for('admin.submission_list') }}">全部提交</a>
       {% endif %}
       <a class="btn btn-outline btn-sm" href="{{ url_for('admin.student_list') }}">学生管理</a>
+      <a class="btn btn-outline btn-sm" href="{{ url_for('admin.operations_page') }}">任务健康</a>
       <a class="btn btn-outline btn-sm" href="{{ url_for('admin.settings_page') }}">系统设置</a>
       <form method="post" action="{{ url_for('admin.logout') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

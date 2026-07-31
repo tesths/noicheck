@@ -514,6 +514,10 @@ table {
   grid-column: 1 / -1;
 }
 
+.operations-failures-panel {
+  grid-column: 1 / -1;
+}
+
 .weak-point-note {
   margin-bottom: 1rem;
 }
