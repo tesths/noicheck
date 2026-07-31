@@ -457,6 +457,140 @@ def test_student_submission_list_uses_centered_table_layout(app, client):
     assert table is not None
 
 
+def test_student_submission_list_shows_weak_point_action_profile(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="owner", real_name="王同学", password_hash=hash_password("pw-1"))
+        other_student = StudentUser(nickname="other", real_name="其他学生", password_hash=hash_password("pw-2"))
+        submission_a = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            student_hint_status="success",
+        )
+        submission_b = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/02/",
+            problem_title="02:字符环",
+            code_text="int main() { return 1; }",
+            submission_mode="self_check",
+            student_hint_status="success",
+        )
+        failed_submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/03/",
+            problem_title="03:失败结果",
+            code_text="int main() { return 2; }",
+            submission_mode="self_check",
+            student_hint_status="failed",
+        )
+        deleted_submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/04/",
+            problem_title="04:已删除提交",
+            code_text="int main() { return 3; }",
+            submission_mode="self_check",
+            student_hint_status="success",
+        )
+        other_submission = Submission(
+            student_name="other",
+            student_user=other_student,
+            problem_url="http://noi.openjudge.cn/ch0107/05/",
+            problem_title="05:其他学生提交",
+            code_text="int main() { return 4; }",
+            submission_mode="self_check",
+            student_hint_status="success",
+        )
+        deleted_submission.mark_deleted()
+        db.session.add_all(
+            [student, other_student, submission_a, submission_b, failed_submission, deleted_submission, other_submission]
+        )
+        db.session.flush()
+        db.session.add_all(
+            [
+                DiagnosisRun(
+                    submission=submission_a,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["字符串遍历"],
+                        "error_patterns": ["循环边界"],
+                    },
+                ),
+                DiagnosisRun(
+                    submission=submission_b,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["字符串遍历", "条件判断"],
+                        "error_patterns": ["循环边界"],
+                    },
+                ),
+                DiagnosisRun(
+                    submission=failed_submission,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="failed",
+                    structured_result_json={
+                        "knowledge_points": ["不应出现失败标签"],
+                        "error_patterns": ["失败错因"],
+                    },
+                ),
+                DiagnosisRun(
+                    submission=deleted_submission,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["不应出现删除标签"],
+                        "error_patterns": ["删除错因"],
+                    },
+                ),
+                DiagnosisRun(
+                    submission=other_submission,
+                    audience="student",
+                    model_name="deepseek-v4-flash",
+                    status="success",
+                    structured_result_json={
+                        "knowledge_points": ["不应出现他人标签"],
+                        "error_patterns": ["他人错因"],
+                    },
+                ),
+            ]
+        )
+        db.session.commit()
+        public_id_a = submission_a.public_id
+        public_id_b = submission_b.public_id
+
+    _login_student(client, "owner", "pw-1")
+    response = client.get("/student/submissions")
+    soup = BeautifulSoup(response.data, "html.parser")
+
+    assert response.status_code == 200
+    action_panel = soup.select_one("[data-testid='student-weak-point-actions']")
+    assert action_panel is not None
+    assert "我的薄弱点行动".encode() in response.data
+    assert "字符串遍历".encode() in response.data
+    assert "循环边界".encode() in response.data
+    assert "重点练习".encode() in response.data
+    assert "出现 2 次".encode() in response.data
+    assert f"/student/submissions/{public_id_a}".encode() in response.data
+    assert f"/student/submissions/{public_id_b}".encode() in response.data
+    assert "不应出现失败标签".encode() not in response.data
+    assert "失败错因".encode() not in response.data
+    assert "不应出现删除标签".encode() not in response.data
+    assert "删除错因".encode() not in response.data
+    assert "不应出现他人标签".encode() not in response.data
+    assert "他人错因".encode() not in response.data
+
+
 def test_student_submission_list_styles_center_table_cells(client):
     response = client.get("/styles.css")
     css = response.get_data(as_text=True)

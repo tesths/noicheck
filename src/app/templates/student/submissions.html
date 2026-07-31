@@ -12,6 +12,90 @@
     </div>
   </div>
 
+  <section class="student-weak-point-actions" data-testid="student-weak-point-actions">
+    <div class="student-weak-point-header">
+      <div>
+        <p class="eyebrow">我的薄弱点行动</p>
+        <h2>先复盘重复出现的知识点和错因</h2>
+      </div>
+      <span class="badge">已分析 {{ weak_point_profile.analyzed_submission_count }} 次自查</span>
+    </div>
+    <p class="empty-state weak-point-note">
+      这里只基于你自己的“自己提交”AI 自查标签汇总；出现 2 次以上先标为重点练习，单次出现先观察。
+    </p>
+    {% if weak_point_profile.has_evidence %}
+      <div class="weak-point-layout">
+        <section>
+          <div class="weak-point-section-title">
+            <p class="eyebrow">知识点</p>
+          </div>
+          {% if weak_point_profile.knowledge_points %}
+            <div class="weak-point-list">
+              {% for item in weak_point_profile.knowledge_points %}
+                <article class="weak-point-item">
+                  <div class="weak-point-item-header">
+                    <strong>{{ item.label }}</strong>
+                    <div class="weak-point-badges">
+                      <span class="badge {% if item.is_repeated %}badge-warning{% else %}badge-neutral{% endif %}">
+                        {{ "重点练习" if item.is_repeated else "观察中" }}
+                      </span>
+                      <span class="badge">出现 {{ item.count }} 次</span>
+                    </div>
+                  </div>
+                  <p class="student-weak-point-action">下一步：打开证据题，先重看自查路线，再手推相关输入、循环或边界。</p>
+                  <div class="weak-point-evidence-list">
+                    {% for evidence in item.evidence %}
+                      <a class="text-link" href="{{ url_for('student.submission_detail', public_id=evidence.public_id) }}">
+                        {{ evidence.title }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty-state">暂无知识点证据。</p>
+          {% endif %}
+        </section>
+
+        <section>
+          <div class="weak-point-section-title">
+            <p class="eyebrow">错因</p>
+          </div>
+          {% if weak_point_profile.error_patterns %}
+            <div class="weak-point-list">
+              {% for item in weak_point_profile.error_patterns %}
+                <article class="weak-point-item">
+                  <div class="weak-point-item-header">
+                    <strong>{{ item.label }}</strong>
+                    <div class="weak-point-badges">
+                      <span class="badge {% if item.is_repeated %}badge-warning{% else %}badge-neutral{% endif %}">
+                        {{ "重点练习" if item.is_repeated else "观察中" }}
+                      </span>
+                      <span class="badge">出现 {{ item.count }} 次</span>
+                    </div>
+                  </div>
+                  <p class="student-weak-point-action">下一步：按证据题里的 AI 自测用例复盘，把实际输出带到追问里继续问。</p>
+                  <div class="weak-point-evidence-list">
+                    {% for evidence in item.evidence %}
+                      <a class="text-link" href="{{ url_for('student.submission_detail', public_id=evidence.public_id) }}">
+                        {{ evidence.title }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                </article>
+              {% endfor %}
+            </div>
+          {% else %}
+            <p class="empty-state">暂无错因证据。</p>
+          {% endif %}
+        </section>
+      </div>
+    {% else %}
+      <p class="empty-state">完成几次“自己提交”并生成自查路线后，这里会自动汇总你反复出现的知识点和错因。</p>
+    {% endif %}
+  </section>
+
   {% if submissions %}
     <div class="table-shell">
       <table class="table student-submission-table">

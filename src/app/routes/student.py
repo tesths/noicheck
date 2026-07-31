@@ -40,6 +40,7 @@ from ..services.student_followups import (
     record_followup_exchange,
     validate_followup_form,
 )
+from ..services.weak_points import build_student_weak_point_profile
 
 student_bp = Blueprint("student", __name__, url_prefix="/student")
 
@@ -345,6 +346,7 @@ def submissions():
         "student/submissions.html",
         student=student,
         submissions=pagination.items,
+        weak_point_profile=build_student_weak_point_profile(student),
         pagination=pagination,
         prev_page_url=_page_url(pagination.prev_page),
         next_page_url=_page_url(pagination.next_page),
