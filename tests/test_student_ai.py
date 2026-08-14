@@ -496,7 +496,7 @@ def test_internal_job_endpoint_processes_student_hint_job(app, client, monkeypat
         assert submission.student_hint_status == "success"
         assert submission.diagnosis_status == "pending"
         assert submission.latest_student_hint_run.status == "success"
-        assert submission.latest_student_hint_run.prompt_version == "student-v6"
+        assert submission.latest_student_hint_run.prompt_version == "student-v7"
         assert submission.latest_diagnosis_run is None
         assert len(student_runs) == 1
 

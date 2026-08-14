@@ -98,6 +98,15 @@
                   {{ result.reliability_note or "当前仅基于题面、样例和学生代码推断，可能遗漏隐藏测试。" }}
                 </p>
               </div>
+              {% set flowchart_mermaid = result|student_flowchart_mermaid %}
+              {% if flowchart_mermaid %}
+                <section class="note-block student-flowchart-block" data-student-flowchart>
+                  <h3>{{ result.solution_flowchart.title or "AI 解题流程图" }}</h3>
+                  <div class="student-flowchart-shell">
+                    <pre class="mermaid student-flowchart">{{ flowchart_mermaid }}</pre>
+                  </div>
+                </section>
+              {% endif %}
               {% if result.knowledge_points or result.error_patterns %}
                 <section class="note-block">
                   <h3>知识点和错因标签</h3>
@@ -550,4 +559,23 @@
     })();
   </script>
 {% endif %}
+<script type="module">
+  const studentFlowcharts = document.querySelectorAll(".student-flowchart");
+  if (studentFlowcharts.length > 0) {
+    import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")
+      .then(function (module) {
+        const mermaid = module.default;
+        mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+        mermaid.run({ nodes: studentFlowcharts });
+      })
+      .catch(function () {
+        studentFlowcharts.forEach(function (chart) {
+          const block = chart.closest("[data-student-flowchart]");
+          if (block instanceof HTMLElement) {
+            block.classList.add("is-render-failed");
+          }
+        });
+      });
+  }
+</script>
 {% endblock %}

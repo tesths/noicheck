@@ -108,6 +108,137 @@ def test_deepseek_service_uses_custom_teacher_system_prompt():
     assert "题目描述" in call["messages"][1]["content"]
 
 
+def test_deepseek_student_service_requests_and_normalizes_solution_flowchart():
+    class StudentFlowchartCompletions:
+        def __init__(self):
+            self.calls = []
+
+        def create(self, **kwargs):
+            self.calls.append(kwargs)
+            content = json.dumps(
+                {
+                    "overall_assessment": "先看字符串遍历顺序。",
+                    "confidence": "medium",
+                    "reliability_level": "候选自测支持",
+                    "possible_issues": [],
+                    "self_test_cases": [],
+                    "solution_flowchart": {
+                        "title": "统计数字字符流程",
+                        "nodes": [
+                            {"id": "start", "label": "开始", "kind": "开始"},
+                            {"id": "read", "label": "读入一行字符串", "kind": "input"},
+                            {"id": "scan", "label": "逐个查看字符", "kind": "process"},
+                            {"id": "digit", "label": "判断当前字符是否为数字", "kind": "decision"},
+                            {"id": "count", "label": "数字计数加一", "kind": "process"},
+                            {"id": "output", "label": "输出数字个数", "kind": "output"},
+                        ],
+                        "edges": [
+                            {"from_id": "start", "to_id": "read", "label": ""},
+                            {"from_id": "read", "to_id": "scan", "label": ""},
+                            {"from_id": "scan", "to_id": "digit", "label": ""},
+                            {"from_id": "digit", "to_id": "count", "label": "是"},
+                            {"from_id": "digit", "to_id": "output", "label": "遍历完"},
+                            {"from_id": "count", "to_id": "scan", "label": "继续"},
+                        ],
+                    },
+                    "knowledge_points": ["字符串遍历"],
+                    "error_patterns": ["循环边界"],
+                    "next_step_checks": ["先手推一个含数字的字符串。"],
+                    "encouragement_or_strategy": "先把读入、遍历、计数、输出分清楚。",
+                },
+                ensure_ascii=False,
+            )
+            return SimpleNamespace(
+                choices=[
+                    SimpleNamespace(
+                        message=SimpleNamespace(content=content)
+                    )
+                ]
+            )
+
+    completions = StudentFlowchartCompletions()
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.diagnose_student(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            description_text="输入一行字符，统计其中数字字符的个数。",
+            input_text="一行字符串。",
+            output_text="输出数字字符个数。",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    call = completions.calls[0]
+    assert "solution_flowchart" in call["messages"][0]["content"]
+    assert "不是学生程序的流程图" in call["messages"][1]["content"]
+    assert result.result.solution_flowchart is not None
+    assert result.result.solution_flowchart.nodes[0].kind == "start"
+    assert result.result.solution_flowchart.edges[3].label == "是"
+
+
+def test_deepseek_student_service_drops_invalid_solution_flowchart_without_failing():
+    client = FakeClient()
+    client.chat.completions.create = lambda **kwargs: SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "overall_assessment": "先检查输入输出顺序。",
+                            "confidence": "medium",
+                            "possible_issues": [],
+                            "self_test_cases": [],
+                            "solution_flowchart": {
+                                "nodes": [
+                                    {"id": "start", "label": "开始", "kind": "start"},
+                                    {"id": "read", "label": "读入", "kind": "input"},
+                                ],
+                                "edges": [{"from_id": "missing", "to_id": "read", "label": ""}],
+                            },
+                            "next_step_checks": ["先确认读入。"],
+                            "encouragement_or_strategy": "一步一步查。",
+                        },
+                        ensure_ascii=False,
+                    )
+                )
+            )
+        ]
+    )
+    service = DeepSeekDiagnosisService(
+        api_key="test-key",
+        base_url="https://api.deepseek.com",
+        model_name="deepseek-v4-pro",
+        client=client,
+    )
+
+    result = service.diagnose_student(
+        DiagnosisPayload(
+            student_name="小明",
+            problem_url="https://noi.openjudge.cn/ch0107/01/",
+            problem_title="01:统计数字字符个数",
+            description_text="输入一行字符，统计其中数字字符的个数。",
+            input_text="一行字符串。",
+            output_text="输出数字字符个数。",
+            sample_input_text="abc123",
+            sample_output_text="3",
+            code_text="int main() { return 0; }",
+        )
+    )
+
+    assert result.result.solution_flowchart is None
+
+
 @pytest.mark.parametrize("audience", ["teacher", "student"])
 def test_deepseek_service_caps_total_prompt_payload_size(audience):
     service = DeepSeekDiagnosisService(

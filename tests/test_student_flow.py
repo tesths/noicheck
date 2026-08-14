@@ -952,9 +952,77 @@ def test_student_list_and_detail_are_scoped_to_owner(app, client):
     assert "教师版完整诊断".encode() not in detail_response.data
     assert "correct_program".encode() not in detail_response.data
     assert "正确的完整程序".encode() not in detail_response.data
+    detail_soup = BeautifulSoup(detail_response.data, "html.parser")
+    assert detail_soup.select_one("[data-student-flowchart]") is None
 
     forbidden_response = client.get(f"/student/submissions/{other_public_id}")
     assert forbidden_response.status_code == 404
+
+
+def test_student_detail_renders_solution_flowchart_for_new_student_hint(app, client):
+    with app.app_context():
+        student = StudentUser(nickname="owner", password_hash=hash_password("pw-1"))
+        submission = Submission(
+            student_name="owner",
+            student_user=student,
+            problem_url="http://noi.openjudge.cn/ch0107/01/",
+            code_text="int main() { return 0; }",
+            submission_mode="self_check",
+            fetch_status="success",
+            student_hint_status="success",
+            diagnosis_status="pending",
+        )
+        db.session.add_all([student, submission])
+        db.session.flush()
+        db.session.add(
+            DiagnosisRun(
+                submission=submission,
+                audience="student",
+                model_name="deepseek-v4-pro",
+                prompt_version="student-v7",
+                status="success",
+                structured_result_json={
+                    "overall_assessment": "先看题目要求的数据流。",
+                    "confidence": "medium",
+                    "reliability_level": "候选自测支持",
+                    "reliability_note": "当前基于题面和 AI 自测推断，不能保证覆盖全部隐藏测试。",
+                    "evidence_sources": ["题面推断"],
+                    "possible_issues": [],
+                    "self_test_cases": [],
+                    "solution_flowchart": {
+                        "title": "AI 解题流程图",
+                        "nodes": [
+                            {"id": "start", "label": "开始", "kind": "start"},
+                            {"id": "read", "label": "读入一行字符串", "kind": "input"},
+                            {"id": "scan", "label": "逐个统计数字字符", "kind": "process"},
+                            {"id": "output", "label": "输出数字个数", "kind": "output"},
+                        ],
+                        "edges": [
+                            {"from_id": "start", "to_id": "read", "label": ""},
+                            {"from_id": "read", "to_id": "scan", "label": ""},
+                            {"from_id": "scan", "to_id": "output", "label": ""},
+                        ],
+                    },
+                    "knowledge_points": [],
+                    "error_patterns": [],
+                    "next_step_checks": [],
+                    "encouragement_or_strategy": "先照着流程核对。",
+                },
+                summary_text="先看题目要求的数据流。",
+            )
+        )
+        db.session.commit()
+        public_id = submission.public_id
+
+    _login_student(client, "owner", "pw-1")
+    response = client.get(f"/student/submissions/{public_id}")
+
+    assert response.status_code == 200
+    assert b"data-student-flowchart" in response.data
+    assert b"flowchart TD" in response.data
+    assert "AI 解题流程图".encode() in response.data
+    assert "读入一行字符串".encode() in response.data
+    assert b"mermaid@11" in response.data
 
 
 def test_teacher_review_detail_hides_teacher_result_from_student(app, client):

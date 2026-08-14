@@ -12,6 +12,7 @@ from .routes.public import public_bp
 from .routes.student import student_bp
 from .services.auth import current_student, enforce_exclusive_login, register_auth_commands
 from .services.followup_cleanup import register_followup_cleanup_commands
+from .services.flowcharts import render_student_flowchart_mermaid
 from .services.timezone import format_beijing_time
 
 
@@ -40,6 +41,10 @@ def create_app(config_object: type[Config] | None = None) -> Flask:
     @app.template_filter("beijing_datetime")
     def _format_beijing_datetime(value):
         return format_beijing_time(value)
+
+    @app.template_filter("student_flowchart_mermaid")
+    def _render_student_flowchart_mermaid(value):
+        return render_student_flowchart_mermaid(value)
 
     with app.app_context():
         if not _is_flask_db_command():

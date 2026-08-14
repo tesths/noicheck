@@ -9,13 +9,13 @@ from openai import OpenAI
 from ..schemas import DiagnosisResult, StudentHintResult
 
 PROMPT_VERSION = "v2"
-STUDENT_PROMPT_VERSION = "student-v6"
+STUDENT_PROMPT_VERSION = "student-v7"
 STUDENT_FOLLOWUP_PROMPT_VERSION = "student-followup-v1"
 STUDENT_OUTPUT_CONTRACT = (
     "你必须只输出一个 JSON 对象。"
     "不要输出 Markdown 代码块，不要输出 ```json，不要输出任何前言、解释、结尾。"
     "第一个非空字符必须是 {，最后一个非空字符必须是 }。"
-    '输出格式示例：{"overall_assessment":"...","confidence":"medium","reliability_level":"候选自测支持","reliability_note":"当前基于题面、样例、代码和 AI 自测推断，不能保证覆盖全部隐藏测试。","evidence_sources":["题面推断","候选自测支持"],"possible_issues":[{"title":"...","location":"...","evidence_source":"题面推断","evidence":"...","explanation":"...","suggested_fix":"...","next_action":"...","local_hint":"..."}],"self_test_cases":[{"title":"...","input_text":"...","expected_output":"...","observation_goal":"...","explanation":"...","source":"候选自测支持","reminder":"这是 AI 建议的自测，不代表覆盖全部隐藏测试。"}],"knowledge_points":["..."],"error_patterns":["..."],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
+    '输出格式示例：{"overall_assessment":"...","confidence":"medium","reliability_level":"候选自测支持","reliability_note":"当前基于题面、样例、代码和 AI 自测推断，不能保证覆盖全部隐藏测试。","evidence_sources":["题面推断","候选自测支持"],"possible_issues":[{"title":"...","location":"...","evidence_source":"题面推断","evidence":"...","explanation":"...","suggested_fix":"...","next_action":"...","local_hint":"..."}],"self_test_cases":[{"title":"...","input_text":"...","expected_output":"...","observation_goal":"...","explanation":"...","source":"候选自测支持","reminder":"这是 AI 建议的自测，不代表覆盖全部隐藏测试。"}],"solution_flowchart":{"title":"AI 解题流程图","nodes":[{"id":"start","label":"开始","kind":"start"},{"id":"read","label":"读入题目要求的数据","kind":"input"},{"id":"solve","label":"按题意处理数据","kind":"process"},{"id":"output","label":"输出结果","kind":"output"},{"id":"end","label":"结束","kind":"end"}],"edges":[{"from_id":"start","to_id":"read","label":""},{"from_id":"read","to_id":"solve","label":""},{"from_id":"solve","to_id":"output","label":""},{"from_id":"output","to_id":"end","label":""}]},"knowledge_points":["..."],"error_patterns":["..."],"next_step_checks":["..."],"encouragement_or_strategy":"..."}'
 )
 TEACHER_OUTPUT_CONTRACT = (
     "你必须只输出一个 JSON 对象。"
@@ -55,9 +55,14 @@ DEFAULT_STUDENT_SYSTEM_PROMPT = (
     "必须给出 self_test_cases，最多 3 个，每个包含 title, input_text, expected_output, observation_goal, explanation, source, reminder。"
     "如果无法可靠推出 expected_output，可以留空或写 null，但必须写 observation_goal。"
     "自测用例只是 AI 建议的自测，不代表官方测试点，也不代表覆盖全部隐藏测试。"
+    "必须给出 solution_flowchart，用来展示你对这道题的完整解题流程图，不是学生程序的执行流程。"
+    "solution_flowchart 只输出结构化流程图数据，不要在流程图外额外写文字讲解。"
+    "solution_flowchart 包含 title, nodes, edges。nodes 最多 16 个，每个节点包含 id, label, kind。"
+    "kind 只能是 start, input, process, decision, output, end。edges 最多 24 条，每条包含 from_id, to_id, label。"
+    "流程图节点可以写完整解题步骤的短标签，但不能给完整 C++ 代码、完整 main 或可直接抄提交的程序。"
     "请给出 knowledge_points 和 error_patterns，分别用于标记知识点和错因。"
     "请输出严格 JSON，字段固定为 "
-    "overall_assessment, confidence, reliability_level, reliability_note, evidence_sources, possible_issues, self_test_cases, knowledge_points, error_patterns, next_step_checks, encouragement_or_strategy。"
+    "overall_assessment, confidence, reliability_level, reliability_note, evidence_sources, possible_issues, self_test_cases, solution_flowchart, knowledge_points, error_patterns, next_step_checks, encouragement_or_strategy。"
     "possible_issues 最多 3 条，每条包含 title, location, evidence_source, evidence, explanation, suggested_fix, next_action, local_hint。"
     "overall_assessment 必须先给总体提示诊断。"
     "possible_issues 的 explanation 和 suggested_fix 要尽量短、具体、易懂。"
@@ -370,6 +375,8 @@ class DeepSeekDiagnosisService:
                     "如果程序只有变量定义、函数声明、空的 main、只写了读入或只写了一点骨架，也要继续给学生起步引导，不要只说代码太少。",
                     "这种情况要指出它离完成还差哪一步，并提醒先补输入、计算、判断、循环或输出里最先缺的一步。",
                     "请把结果组织成学生第一屏可看的自查路线：可靠性提示、风险点、下一步动作和智能自测用例。",
+                    "请额外生成 solution_flowchart：它是你对题目解法的完整流程图，不是学生程序的流程图。",
+                    "solution_flowchart 只要结构化节点和连线，节点标签要短，不要额外输出流程图文字解释或完整代码。",
                     "请默认最多 3 个可复制自测输入，说明每个测试在检查什么；如果不能可靠推出输出，就写观察点。",
                     "不要声称这些自测覆盖全部隐藏测试。",
                     "如需代码示例，只能给 1-3 行局部片段或伪代码，不能给完整 main 或完整可提交程序。",
@@ -549,6 +556,23 @@ _RELIABILITY_ALIASES = {
 }
 _LOCAL_HINT_FORBIDDEN_MARKERS = ("#include", "int main", "main(", "main (", "using namespace", "return 0;")
 _FORBIDDEN_STUDENT_ANSWER_MESSAGE = "这里不能直接给完整可提交程序。你可以把当前卡住的位置或自测输出发给我，我会继续帮你定位下一步。"
+_FLOWCHART_NODE_KINDS = {"start", "input", "process", "decision", "output", "end"}
+_FLOWCHART_KIND_ALIASES = {
+    "开始": "start",
+    "起点": "start",
+    "读入": "input",
+    "输入": "input",
+    "处理": "process",
+    "计算": "process",
+    "步骤": "process",
+    "判断": "decision",
+    "分支": "decision",
+    "条件": "decision",
+    "输出": "output",
+    "结束": "end",
+    "终点": "end",
+}
+_FLOWCHART_CONTROL_CHARS = '[]{}()<>|"`;'
 
 
 def _normalize_result_payload(payload: Any) -> dict[str, Any]:
@@ -672,6 +696,13 @@ def _normalize_student_result_payload(payload: Any) -> dict[str, Any]:
         "evidence_sources": evidence_sources,
         "possible_issues": normalized_issues,
         "self_test_cases": self_test_cases,
+        "solution_flowchart": _normalize_solution_flowchart(
+            payload.get("solution_flowchart")
+            or payload.get("flowchart")
+            or payload.get("solution_diagram")
+            or payload.get("解题流程图")
+            or payload.get("流程图")
+        ),
         "knowledge_points": _as_string_list(payload.get("knowledge_points") or payload.get("知识点"))[:5],
         "error_patterns": _as_string_list(payload.get("error_patterns") or payload.get("错因标签") or payload.get("常见错因"))[:5],
         "next_step_checks": _as_string_list(payload.get("next_step_checks")),
@@ -755,6 +786,88 @@ def _normalize_self_test_case(item: Any) -> dict[str, Any]:
         "source": _normalize_reliability_level(item.get("source") or item.get("来源"), has_self_tests=True),
         "reminder": str(item.get("reminder") or item.get("提醒") or "这是 AI 建议的自测，不代表覆盖全部隐藏测试。"),
     }
+
+
+def _normalize_solution_flowchart(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+
+    raw_nodes = value.get("nodes") or value.get("节点")
+    raw_edges = value.get("edges") or value.get("连线") or value.get("links")
+    if not isinstance(raw_nodes, list) or not isinstance(raw_edges, list):
+        return None
+
+    nodes: list[dict[str, str]] = []
+    seen_node_ids: set[str] = set()
+    for index, item in enumerate(raw_nodes[:16], start=1):
+        if not isinstance(item, dict):
+            continue
+        node_id = _clean_flowchart_text(item.get("id") or item.get("key") or f"n{index}", max_chars=32)
+        label = _clean_flowchart_text(
+            item.get("label") or item.get("text") or item.get("name") or item.get("步骤"),
+            max_chars=80,
+        )
+        if not node_id or not label or node_id in seen_node_ids:
+            continue
+        seen_node_ids.add(node_id)
+        nodes.append(
+            {
+                "id": node_id,
+                "label": label,
+                "kind": _normalize_flowchart_kind(item.get("kind") or item.get("type") or item.get("类型")),
+            }
+        )
+
+    if len(nodes) < 2:
+        return None
+
+    edges: list[dict[str, str]] = []
+    for item in raw_edges[:24]:
+        if not isinstance(item, dict):
+            continue
+        from_id = _clean_flowchart_text(
+            item.get("from_id") or item.get("from") or item.get("source") or item.get("起点"),
+            max_chars=32,
+        )
+        to_id = _clean_flowchart_text(
+            item.get("to_id") or item.get("to") or item.get("target") or item.get("终点"),
+            max_chars=32,
+        )
+        if from_id not in seen_node_ids or to_id not in seen_node_ids:
+            continue
+        edges.append(
+            {
+                "from_id": from_id,
+                "to_id": to_id,
+                "label": _clean_flowchart_text(item.get("label") or item.get("条件"), max_chars=24),
+            }
+        )
+
+    if not edges:
+        return None
+
+    return {
+        "title": _clean_flowchart_text(value.get("title") or value.get("标题") or "AI 解题流程图", max_chars=80),
+        "nodes": nodes,
+        "edges": edges,
+    }
+
+
+def _normalize_flowchart_kind(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if text in _FLOWCHART_NODE_KINDS:
+        return text
+    return _FLOWCHART_KIND_ALIASES.get(str(value or "").strip(), "process")
+
+
+def _clean_flowchart_text(value: Any, *, max_chars: int) -> str:
+    text = str(value or "")
+    for char in _FLOWCHART_CONTROL_CHARS:
+        text = text.replace(char, " ")
+    text = " ".join(text.split())
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rstrip()
 
 
 def _normalize_reliability_level(value: Any, *, has_self_tests: bool) -> str:

@@ -299,6 +299,18 @@ def test_process_student_hint_job_releases_db_session_before_ai_call(app, monkey
             "overall_assessment": "学生提示完成",
             "confidence": "medium",
             "possible_issues": [],
+            "solution_flowchart": {
+                "title": "AI 解题流程图",
+                "nodes": [
+                    {"id": "start", "label": "开始", "kind": "start"},
+                    {"id": "read", "label": "读入", "kind": "input"},
+                    {"id": "output", "label": "输出", "kind": "output"},
+                ],
+                "edges": [
+                    {"from_id": "start", "to_id": "read", "label": ""},
+                    {"from_id": "read", "to_id": "output", "label": ""},
+                ],
+            },
             "next_step_checks": ["先检查输入"],
             "encouragement_or_strategy": "继续加油",
         }
@@ -327,10 +339,14 @@ def test_process_student_hint_job_releases_db_session_before_ai_call(app, monkey
         )
         db.session.add(submission)
         db.session.commit()
+        public_id = submission.public_id
 
         from src.app.services.jobs import process_student_hint_job
 
-        assert process_student_hint_job(submission.public_id, fetch_before_diagnosis=True) == "success"
+        assert process_student_hint_job(public_id, fetch_before_diagnosis=True) == "success"
+        refreshed = Submission.query.filter_by(public_id=public_id).one()
+        result = refreshed.latest_student_hint_run.structured_result_json
+        assert result["solution_flowchart"]["nodes"][0]["kind"] == "start"
 
 
 def test_process_diagnosis_job_avoids_duplicate_fetch_under_concurrency(tmp_path, monkeypatch):

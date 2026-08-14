@@ -5,6 +5,25 @@ from pydantic import BaseModel, Field
 from .diagnosis import PossibleIssue
 
 ReliabilityLevel = Literal["题面推断", "候选自测支持", "学生反馈支持", "更强证据支持"]
+FlowchartNodeKind = Literal["start", "input", "process", "decision", "output", "end"]
+
+
+class SolutionFlowchartNode(BaseModel):
+    id: str = Field(min_length=1, max_length=32)
+    label: str = Field(min_length=1, max_length=80)
+    kind: FlowchartNodeKind = "process"
+
+
+class SolutionFlowchartEdge(BaseModel):
+    from_id: str = Field(min_length=1, max_length=32)
+    to_id: str = Field(min_length=1, max_length=32)
+    label: str = Field(default="", max_length=24)
+
+
+class SolutionFlowchart(BaseModel):
+    title: str = Field(default="AI 解题流程图", max_length=80)
+    nodes: list[SolutionFlowchartNode] = Field(default_factory=list, max_length=16)
+    edges: list[SolutionFlowchartEdge] = Field(default_factory=list, max_length=24)
 
 
 class SelfTestCase(BaseModel):
@@ -25,6 +44,7 @@ class StudentHintResult(BaseModel):
     evidence_sources: list[str] = Field(default_factory=list, max_length=5)
     possible_issues: list[PossibleIssue] = Field(default_factory=list, max_length=3)
     self_test_cases: list[SelfTestCase] = Field(default_factory=list, max_length=3)
+    solution_flowchart: SolutionFlowchart | None = None
     knowledge_points: list[str] = Field(default_factory=list, max_length=5)
     error_patterns: list[str] = Field(default_factory=list, max_length=5)
     next_step_checks: list[str] = Field(default_factory=list)
