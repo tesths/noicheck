@@ -1,6 +1,6 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-07-31
+更新时间：2026-08-14
 
 ## 1. 项目目标
 
@@ -41,6 +41,8 @@
 - 内部已增加任务健康 JSON 端点 `/internal/operations/health`：使用 `X-Internal-Job-Token` 鉴权，只返回汇总数字，可选 `fail_on_unhealthy=1` 用 `503` 触发外部监控告警。
 - 教师后台学生详情页已增加薄弱点画像 MVP：基于学生端 AI 自查标签聚合知识点和错因，展示出现次数、重点/观察中状态与证据提交链接。
 - 学生端提交列表已增加薄弱点行动版 MVP：基于自己的“自己提交”自查标签展示重点练习 / 观察中状态、复盘动作和证据题链接。
+- 学生端自查详情页已增加 AI 解题流程图 MVP：学生自己提交后，新生成的学生提示可展示大模型对题目的解题流程图，不展示学生程序控制流或完整 C++ 代码。
+- AI 解题流程图复用学生提示链路，结构化数据存入 `diagnosis_runs.structured_result_json.solution_flowchart`，服务端格式化为 Mermaid flowchart，页面按需加载 Mermaid 渲染；历史记录没有该字段时不补生成、不影响旧展示。
 - 学生账号归属创建它的老师：`student_users.owner_admin_id`；教师后台只显示并管理自己的学生和对应提交，不提供超级管理员旁路。历史学生在迁移时归入用户名为 `admin` 的老师。
 - 教师后台从筛选列表进入提交详情后，返回列表会保留当前筛选或分页上下文。
 - 教师后台支持软删除提交记录，删除后学生端、教师端和后台任务都会忽略该记录。
@@ -68,6 +70,7 @@
 - 2026-07-31 已上线学生端薄弱点行动版 MVP：学生在“我的提交”可看到重复知识点 / 错因、下一步复盘动作和对应证据题。
 - 2026-07-31 已上线任务健康外部监控入口：内部 JSON 端点提供隐私安全汇总，可接 uptime/cron 类外部告警。
 - 2026-07-31 已完成待确认项评估：当前 MVP 不接入真实 C++ 沙箱；免费部署平台调研记录在 `docs/PLATFORM_RESEARCH.md`。
+- 2026-08-14 已上线学生端 AI 解题流程图 MVP：学生 self-check 新提交会随学生提示生成结构化 `solution_flowchart`，详情页使用 Mermaid 渲染；本地回归通过 `192 passed`，Node Queue consumer `7 passed`，Ruff 通过。
 
 目前学生端和教师端的 AI 能力已经分流：
 
@@ -136,6 +139,7 @@
 ### 3.4 页面与样式
 
 - 组件体系：daisyUI v5 CDN + Tailwind browser runtime。
+- 流程图渲染：学生详情页仅在存在 `solution_flowchart` 时按需加载 `mermaid@11` ESM CDN。
 - 主题入口：`src/app/templates/base.html` 设置 `data-theme="coffee"`。
 - 主题覆盖：`public/styles.css` 只覆盖 daisyUI 颜色 token 和结构布局，不再自定义组件圆角、阴影或按钮外观。
 - 主要组件：页面卡片使用 `card`，按钮使用 `btn` / `btn-primary` / `btn-outline`，表单控件使用 `input` / `select` / `textarea`，表格使用 `table`，状态使用 `badge` / `alert`。
@@ -157,7 +161,7 @@
 4. 若选择 `自己提交`：
    - 落库时绑定 `student_user_id`
    - 自动入队 `fetch-and-student-diagnose`
-   - 学生只看到提示结果
+   - 学生只看到提示结果，包括风险点、AI 自测用例、AI 解题流程图和继续追问入口
    - 学生提示成功后，可在详情页右上角打开追问抽屉继续追问
 5. 若选择 `提交给老师`：
    - 落库时绑定 `student_user_id`
@@ -178,6 +182,7 @@
 - 建议检查的位置
 - 自查步骤
 - 提示策略
+- AI 对题目解法的流程图
 
 学生端不允许展示：
 
@@ -267,6 +272,14 @@
 - `student`：学生端提示结果，不含正确程序。
 - `teacher`：教师端完整诊断，可含参考程序。
 
+学生端 `structured_result_json` 当前还可以包含 `solution_flowchart`：
+
+- `title`：流程图标题。
+- `nodes`：最多 16 个节点，包含 `id`、`label`、`kind`。
+- `edges`：最多 24 条连线，包含 `from_id`、`to_id`、`label`。
+- `kind` 只使用 `start / input / process / decision / output / end`。
+- 该字段只随新学生提示生成，旧记录缺失时页面不展示流程图。
+
 ### 5.4 学生账号
 
 新增 `student_users` 表，核心字段包括：
@@ -325,7 +338,9 @@
 - `src/app/services/jobs.py`
   - 抓题、学生提示、教师诊断、状态流转，以及软删除记录跳过逻辑
 - `src/app/services/ai.py`
-  - 教师版 AI、学生版 AI 提示，以及 JSON 输出契约与解析容错
+  - 教师版 AI、学生版 AI 提示，以及 JSON 输出契约与解析容错；学生版当前提示版本为 `student-v7`，包含 `solution_flowchart`
+- `src/app/services/flowcharts.py`
+  - 把学生提示里的结构化 `solution_flowchart` 安全格式化为 Mermaid flowchart，供模板渲染
 - `src/app/services/student_followups.py`
   - 学生继续追问、编程问题限制、会话上下文准备与消息落库
 - `src/app/services/weak_points.py`
@@ -339,7 +354,7 @@
 - `src/app/schemas/diagnosis.py`
   - 教师版结构化诊断 schema
 - `src/app/schemas/student_hint.py`
-  - 学生版提示 schema
+  - 学生版提示 schema，包括 `solution_flowchart` 节点和连线结构
 - `src/app/models/student_user.py`
   - 学生账号模型
 - `src/app/models/submission.py`

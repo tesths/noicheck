@@ -23,11 +23,16 @@
 
 最近一次界面与测试回归结论：
 
+- 2026-08-14 已完成学生端 AI 解题流程图 MVP：self-check 新提交会随学生提示生成结构化 `solution_flowchart`，学生详情页按需加载 Mermaid 渲染
+- 学生端流程图展示的是大模型对题目的解题流程，不是学生程序控制流，也不展示完整 C++ 参考代码
+- 本地全量回归 `.venv/bin/python -m pytest -q`：`192 passed`
+- 静态检查 `.venv/bin/python -m ruff check .`：通过
+- Node Queue consumer 回归 `node --test tests/node/process-submission.test.cjs`：`7 passed`
 - 2026-07-20 已完成全站 daisyUI 组件化视觉迁移
 - 当前主题以棕色为主，`btn-primary`、表单、表格、卡片均使用 daisyUI 默认组件形态
 - 已移除旧的自定义按钮类与大圆角 / 阴影式旧样式，保留少量结构布局 CSS
 - 已用 Playwright 检查桌面端 `1280px` 与移动端 `375px` 的按钮颜色、输入框 / 按钮对齐和横向溢出
-- 本地回归 `uv run pytest -q`：`179 passed`
+- 本地回归 `uv run pytest -q`：`179 passed`（2026-07-20 历史记录）
 - 覆盖率回归 `uv run --with coverage coverage report --fail-under=95`：总覆盖率 `98%`
 
 最近一次稳定性回归结论：
@@ -49,6 +54,7 @@
 - 统一登录入口 `/`
 - 学生端双提交流程：`自己提交` / `提交给老师`
 - 学生提交详情右侧追问抽屉：保留原始代码和学生提示，支持围绕当前题目继续多轮追问
+- 学生自查详情 AI 解题流程图：新 self-check 提交会展示模型对题目的解题流程，不展示完整答案代码
 - 学生端薄弱点行动版：在“我的提交”汇总重复知识点 / 错因，给出复盘动作和证据题链接
 - 追问链路只回答题目相关的编程问题，跑题内容会统一拒答并引导回代码、输入输出和调试
 - 教师可从学生视角查看同一套追问记录抽屉（只读）
