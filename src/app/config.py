@@ -82,7 +82,7 @@ class Config:
 
     AI_API_KEY = _first_env_value("AI_API_KEY", "DEEPSEEK_API_KEY")
     AI_BASE_URL = _first_env_value("AI_BASE_URL", "DEEPSEEK_BASE_URL", default="https://api.deepseek.com")
-    AI_MODEL = _first_env_value("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-v4-pro")
+    AI_MODEL = _first_env_value("AI_MODEL", "DEEPSEEK_MODEL", default="deepseek-flash")
     AI_REQUEST_TIMEOUT_SECONDS = float(os.getenv("AI_REQUEST_TIMEOUT_SECONDS", "30"))
     AI_MAX_RETRIES = int(os.getenv("AI_MAX_RETRIES", "1"))
     AI_RETRY_BACKOFF_SECONDS = float(os.getenv("AI_RETRY_BACKOFF_SECONDS", "1"))

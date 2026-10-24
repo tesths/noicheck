@@ -22,7 +22,9 @@
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="hero-copy compact-copy">
       <p class="eyebrow">AI 模型</p>
-      <p>当前：<strong>{{ active_ai_model }}</strong></p>
+      <p>当前：<strong>{{ active_ai_model }}</strong>
+        {% if active_ai_model_id and active_ai_model_id != active_ai_model %}（实际调用 {{ active_ai_model_id }}）{% endif %}
+      </p>
     </div>
     <label class="field fieldset">
       <span>选择模型</span>

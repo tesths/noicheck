@@ -1,6 +1,6 @@
 # NOI 错题诊断系统项目说明
 
-更新时间：2026-08-14
+更新时间：2026-10-24
 
 ## 1. 项目目标
 
@@ -33,7 +33,7 @@
 - 教师查看学生视角预览时，使用同一套追问抽屉，但表单为只读。
 - 教师后台可以看到学生提示，也可以看到老师版完整诊断和参考程序。
 - 学生账号已区分“登录用户名”和“真实姓名”。
-- 教师后台支持切换 DeepSeek `v4 flash / v4 pro`，并对后续全部 AI 任务生效。
+- 教师后台支持切换 `deepseek-flash` / `deepseek-pro`，按 `AI_BASE_URL` 自动解析成供应商模型 ID（DeepSeek 官方短名或 OpenRouter `provider/model`），并对后续全部 AI 任务生效。
 - 教师后台支持分别配置老师版和学生版 DeepSeek 系统提示词，并对后续 AI 任务生效。
 - 教师后台支持按学生筛选提交、查看某个学生的全部提交记录。
 - 教师后台学生管理页支持批量导入学生名单，每行使用 `学生用户名,真实姓名,初始密码`，导入前会整体校验，任意一行错误都不会写入。
@@ -48,7 +48,8 @@
 - 教师后台支持软删除提交记录，删除后学生端、教师端和后台任务都会忽略该记录。
 - 抓题和 AI 任务继续走异步队列。
 - Queue consumer 已兼容 Vercel Queue 的 3 种回调形态：解析后的 body、原始请求流、以及仅带 `ce-vqs*` 头并需按 `messageId` 回拉 payload 的 CloudEvent 回调。
-- AI 配置已兼容 `AI_*` 与旧 `DEEPSEEK_*` 变量，可切换 OpenRouter。
+- AI 配置已兼容 `AI_*` 与旧 `DEEPSEEK_*` 变量，可切换 OpenRouter：逻辑模型名 `deepseek-flash` / `deepseek-pro` 会按 `AI_BASE_URL` 解析成对应供应商的模型 ID。
+- 2026-10-24 AI 模型升级到最新 DeepSeek Flash：OpenRouter 侧使用 `deepseek/deepseek-v4.1-flash-1017`（2026-10-17 快照，DeepSeek 官方接口名 `deepseek-flash`），`AI_MODEL` 统一填逻辑名；同时清理 Vercel 上 6 个失效/冗余变量（`AI_MAX_TOKENS_*`、`OPENROUTER_PROVIDER_SORT`、`DEEPSEEK_*`）。
 - 当前稳定策略以“正常使用优先”为主：先保证模型按 JSON 契约输出，并在解析层兼容少量脏格式返回。
 - 生产迁移已补齐旧库幂等处理：`request_token` 列、追问表结构、Alembic 基线补写和历史追问清洗都能重复执行。
 - 2026-05-17 已定点收敛一轮线上 `500`：生产数据库连接池增加最小值兜底，抓题和 AI 长耗时阶段会主动释放会话，减少连接池被占满的概率。
@@ -205,7 +206,7 @@
 - 查看题面快照
 - 查看教师版 AI 诊断与参考程序
 - 从学生视角只读预览同一套追问抽屉
-- 切换当前 AI 模型（`deepseek-v4-flash` / `deepseek-v4-pro`）
+- 切换当前 AI 模型（`deepseek-flash` / `deepseek-pro`）
 - 创建学生账号
 - 重置学生密码
 - 禁用 / 启用学生账号
@@ -404,7 +405,7 @@
 - 新增 `Submission.submission_mode`，明确区分 `self_check` 和 `teacher_review`。
 - 学生端拆成“自己提交”和“提交给老师”两套表单与处理链路。
 - 教师后台列表和详情页补充提交类型、学生提示结果和老师版结果分流展示。
-- AI 配置兼容 `AI_*` 与旧 `DEEPSEEK_*`，`.env.example` 已改为完整生产模板，并明确当前后台模型切换只支持 `deepseek-v4-flash` / `deepseek-v4-pro`。
+- AI 配置兼容 `AI_*` 与旧 `DEEPSEEK_*`，`.env.example` 已改为完整生产模板，并明确后台模型切换使用逻辑模型名 `deepseek-flash` / `deepseek-pro`（按 `AI_BASE_URL` 解析成供应商模型 ID）。
 - 教师 prompt 升级到 `v2`、学生 prompt 升级到 `student-v5`，明确要求只输出单个 JSON 对象；学生程序即使只有空壳或简单定义，也要继续用孩子能听懂的话解释输入输出、变量接收和起步写法。
 - 解析层增加 JSON 容错：当模型偶发返回代码块或前后缀说明文字时，系统会先提取首个完整 JSON 对象再继续校验。
 - 新增学生继续追问能力，追问记录按聊天消息持久化保存。
@@ -458,7 +459,7 @@
 - `APP_BASE_URL` 需要指向正式站点地址。
 - 线上 Queue callback 优先依赖请求头里的 `x-vercel-oidc-token` 回拉消息；仅在本地联调真实 Queue 或脱离 Vercel 环境时，才需要显式提供 `VERCEL_OIDC_TOKEN`。
 - 若线上仍保留旧变量名，系统会继续兼容读取 `DEEPSEEK_*`。
-- 当前后台模型设置只接受 `deepseek-v4-flash` / `deepseek-v4-pro`。如果 AI 供应商要求 provider/model 形式，需要先同步更新 `src/app/services/settings.py` 的允许模型列表。
+- 当前后台模型设置只接受 `deepseek-flash` / `deepseek-pro`，旧逻辑名 `deepseek-v4-flash` / `deepseek-v4-pro` 会自动归一。升级模型快照只需修改 `src/app/services/settings.py` 里的 `_PROVIDER_MODEL_IDS`。
 - 若要提升高峰稳定性，应一并确认 `SQLALCHEMY_POOL_SIZE`、`SQLALCHEMY_MAX_OVERFLOW`、`SQLALCHEMY_POOL_TIMEOUT`、`AI_CONCURRENCY_LIMIT_STUDENT`、`AI_CONCURRENCY_LIMIT_TEACHER`、`FETCH_CONCURRENCY_LIMIT`。
 - `scripts/prod-db-migrate.sh` 在 `db upgrade` 后会自动执行 `uv run flask clean-followup-history`。
 - 如需先观察影响范围，可单独执行 `uv run flask clean-followup-history --dry-run`。

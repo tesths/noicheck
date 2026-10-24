@@ -16,8 +16,8 @@
 
 当前生产部署状态：
 
-- 2026-07-29 通过 Vercel CLI 核查，`https://noi.bbbypw.online` 指向 `tesths-projects/noicheck`
-- 当前 production deployment：`dpl_BWcvBs2zbsMAmUxRukZ4nHaRJi5u`
+- 2026-10-24 通过 Vercel CLI 核查，`https://noi.pythonturtle100.com` 指向 `tesths-projects/noicheck`（旧域名 `noi.bbbypw.online` 已不在别名列表）
+- 当前 production deployment：`dpl_GrPezD4CadG1uabennL18LSeUxm6`
 - deployment 状态：`Ready`
 - Flask 主站运行在 Python 3.12 lambda，Queue consumer 运行在 Node.js 24.x lambda，区域均为 `iad1`
 
@@ -112,7 +112,7 @@ APP_ENV=development
 DATABASE_URL=sqlite:///instance/dev.db
 AI_API_KEY=your-test-key
 AI_BASE_URL=https://api.deepseek.com
-AI_MODEL=deepseek-v4-pro
+AI_MODEL=deepseek-flash
 JOB_QUEUE_BACKEND=inline
 BOOTSTRAP_ON_STARTUP=false
 REQUIRE_PRODUCTION_ENV=false
@@ -122,6 +122,7 @@ APP_BASE_URL=http://127.0.0.1:5000
 补充说明：
 
 - 本地默认可以直接用 SQLite。
+- `AI_MODEL` 只填逻辑模型名 `deepseek-flash` / `deepseek-pro`；实际请求的模型 ID 由 `AI_BASE_URL` 自动解析（DeepSeek 官方用短名，OpenRouter 用 `provider/model` 形式）。
 - `JOB_QUEUE_BACKEND=inline` 表示本地直接在请求链路内执行任务，便于联调。
 - 若要本地初始化管理员账号，可设置 `ADMIN_INIT_USERNAME` 和 `ADMIN_INIT_PASSWORD`，并把 `BOOTSTRAP_ON_STARTUP=true`。
 
@@ -238,7 +239,7 @@ uv run ruff check
 用 Vercel CLI 复查当前线上部署：
 
 ```bash
-vercel inspect https://noi.bbbypw.online
+vercel inspect https://noi.pythonturtle100.com
 vercel project inspect noicheck
 ```
 
@@ -266,6 +267,8 @@ export HTTPS_PROXY=http://127.0.0.1:21081
 
 - AI 配置支持新变量名 `AI_*`
 - 也兼容旧变量名 `DEEPSEEK_*`
+- `AI_MODEL` 填逻辑模型名 `deepseek-flash` / `deepseek-pro`，代码会按 `AI_BASE_URL` 解析成供应商模型 ID：OpenRouter 用 `deepseek/deepseek-v4.1-flash-1017`、`deepseek/deepseek-v4-pro`，DeepSeek 官方用 `deepseek-flash`、`deepseek-pro`
+- 旧逻辑名 `deepseek-v4-flash` / `deepseek-v4-pro` 仍可读取，会自动归一到 `deepseek-flash` / `deepseek-pro`
 - 线上 Queue callback 优先使用请求头里的 `x-vercel-oidc-token` 回拉消息；仅本地联调或脱离 Vercel 环境复现时，才需要额外提供 `VERCEL_OIDC_TOKEN`
 - 详细变量说明、部署状态和排错入口见 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)
 

@@ -46,6 +46,7 @@ from src.app.services.settings import (
     get_active_ai_model,
     get_student_system_prompt,
     get_teacher_system_prompt,
+    resolve_ai_model_id,
     set_active_ai_model,
     set_ai_prompts,
 )
@@ -982,14 +983,32 @@ def test_problem_fetcher_error_edges(monkeypatch):
 def test_settings_defaults_and_required_text_errors(app):
     with app.app_context():
         app.config["AI_MODEL"] = "deepseek-v4-flash"
-        assert default_ai_model_name() == "deepseek-v4-flash"
-        assert get_active_ai_model() == "deepseek-v4-flash"
+        assert default_ai_model_name() == "deepseek-flash"
+        assert get_active_ai_model() == "deepseek-flash"
         assert get_teacher_system_prompt()
         assert get_student_system_prompt()
         with pytest.raises(ValueError):
             set_active_ai_model("bad")
         with pytest.raises(ValueError):
             set_ai_prompts(teacher_system_prompt="", student_system_prompt="student")
+
+
+def test_resolve_ai_model_id_maps_provider_specific_ids(app):
+    with app.app_context():
+        assert (
+            resolve_ai_model_id("deepseek-flash", "https://openrouter.ai/api/v1")
+            == "deepseek/deepseek-v4.1-flash-1017"
+        )
+        assert (
+            resolve_ai_model_id("deepseek-v4-pro", "https://openrouter.ai/api/v1")
+            == "deepseek/deepseek-v4-pro"
+        )
+        assert resolve_ai_model_id("deepseek-flash", "https://api.deepseek.com") == "deepseek-flash"
+        assert resolve_ai_model_id("deepseek-pro", "https://example.com/v1") == "deepseek-pro"
+        assert (
+            resolve_ai_model_id("deepseek/deepseek-v4.1-flash-1017", "https://example.com/v1")
+            == "deepseek/deepseek-v4.1-flash-1017"
+        )
 
 
 def test_bootstrap_admin_error_and_legacy_helper_edges(app, monkeypatch):

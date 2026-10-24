@@ -18,7 +18,12 @@ from .ai import (
 )
 from .job_queue import JobMessage, JobQueueError, enqueue_job
 from .problem_fetcher import OpenJudgeProblemFetcher, ProblemFetchError, normalize_openjudge_url
-from .settings import get_active_ai_model, get_student_system_prompt, get_teacher_system_prompt
+from .settings import (
+    get_active_ai_model,
+    get_student_system_prompt,
+    get_teacher_system_prompt,
+    resolve_ai_model_id,
+)
 
 FETCH_PROBLEM_JOB = "fetch-problem"
 DIAGNOSE_SUBMISSION_JOB = "diagnose-submission"
@@ -444,22 +449,28 @@ def _student_hint_idempotency_key(submission: Submission) -> str:
     return f"student-hint:{submission.public_id}:{digest}"
 
 
+def _ai_api_key() -> str:
+    return str(current_app.config.get("AI_API_KEY") or current_app.config.get("DEEPSEEK_API_KEY") or "").strip()
+
+
+def _ai_base_url() -> str:
+    return str(
+        current_app.config.get("AI_BASE_URL")
+        or current_app.config.get("DEEPSEEK_BASE_URL")
+        or "https://api.deepseek.com"
+    ).strip()
+
+
 def _ai_config() -> dict[str, str]:
     return {
-        "api_key": str(
-            current_app.config.get("AI_API_KEY") or current_app.config.get("DEEPSEEK_API_KEY") or ""
-        ).strip(),
-        "base_url": str(
-            current_app.config.get("AI_BASE_URL")
-            or current_app.config.get("DEEPSEEK_BASE_URL")
-            or "https://api.deepseek.com"
-        ).strip(),
+        "api_key": _ai_api_key(),
+        "base_url": _ai_base_url(),
         "model_name": _ai_model_name(),
     }
 
 
 def _ai_model_name() -> str:
-    return get_active_ai_model()
+    return resolve_ai_model_id(get_active_ai_model(), _ai_base_url())
 
 
 def _build_diagnosis_payload(submission: Submission) -> DiagnosisPayload:

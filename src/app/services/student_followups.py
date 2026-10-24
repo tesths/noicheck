@@ -12,7 +12,7 @@ from .ai import (
     StudentFollowupResponse,
     normalize_student_followup_answer_text,
 )
-from .settings import get_active_ai_model, get_student_system_prompt
+from .settings import get_active_ai_model, get_student_system_prompt, resolve_ai_model_id
 
 FOLLOWUP_QUESTION_MAX_LENGTH = 1000
 FOLLOWUP_CONTEXT_LABEL_MAX_LENGTH = 80
@@ -330,14 +330,15 @@ __all__ = [
 
 
 def _ai_config() -> dict[str, str]:
+    base_url = str(
+        current_app.config.get("AI_BASE_URL")
+        or current_app.config.get("DEEPSEEK_BASE_URL")
+        or "https://api.deepseek.com"
+    ).strip()
     return {
         "api_key": str(
             current_app.config.get("AI_API_KEY") or current_app.config.get("DEEPSEEK_API_KEY") or ""
         ).strip(),
-        "base_url": str(
-            current_app.config.get("AI_BASE_URL")
-            or current_app.config.get("DEEPSEEK_BASE_URL")
-            or "https://api.deepseek.com"
-        ).strip(),
-        "model_name": get_active_ai_model(),
+        "base_url": base_url,
+        "model_name": resolve_ai_model_id(get_active_ai_model(), base_url),
     }

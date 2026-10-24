@@ -47,8 +47,8 @@ def test_admin_system_settings_page_shows_ai_model_switcher(app, client):
 
     assert response.status_code == 200
     assert "系统设置".encode() in response.data
-    assert "deepseek-v4-pro".encode() in response.data
-    assert "deepseek-v4-flash".encode() in response.data
+    assert "deepseek-pro".encode() in response.data
+    assert "deepseek-flash".encode() in response.data
     assert b'name="teacher_system_prompt"' in response.data
     assert b'name="student_system_prompt"' in response.data
     assert "完整正确程序".encode() in response.data
@@ -181,8 +181,8 @@ def test_admin_switched_model_applies_to_teacher_diagnosis_job(app, client, monk
         submission = Submission.query.filter_by(public_id=public_id).one()
         teacher_run = DiagnosisRun.query.filter_by(submission_id=submission.id, audience="teacher").one()
 
-        assert captured["model_name"] == "deepseek-v4-flash"
-        assert teacher_run.model_name == "deepseek-v4-flash"
+        assert captured["model_name"] == "deepseek-flash"
+        assert teacher_run.model_name == "deepseek-flash"
 
 
 def test_admin_switched_model_also_applies_to_student_hint_job(app, client, monkeypatch):
@@ -251,8 +251,8 @@ def test_admin_switched_model_also_applies_to_student_hint_job(app, client, monk
         submission = Submission.query.filter_by(public_id=public_id).one()
         student_run = DiagnosisRun.query.filter_by(submission_id=submission.id, audience="student").one()
 
-        assert captured["model_name"] == "deepseek-v4-flash"
-        assert student_run.model_name == "deepseek-v4-flash"
+        assert captured["model_name"] == "deepseek-flash"
+        assert student_run.model_name == "deepseek-flash"
 
 
 def test_admin_custom_teacher_prompt_applies_to_teacher_diagnosis_job(app, client, monkeypatch):

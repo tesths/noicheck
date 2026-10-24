@@ -20,6 +20,7 @@ from ..services.operations import build_operation_health_report
 from ..services.pagination import paginate_query, normalize_page
 from ..services.settings import (
     ALLOWED_AI_MODELS,
+    active_ai_model_id,
     get_active_ai_model,
     get_student_system_prompt,
     get_teacher_system_prompt,
@@ -130,6 +131,7 @@ def _settings_page_context(
 ) -> dict[str, object]:
     return {
         "active_ai_model": get_active_ai_model(),
+        "active_ai_model_id": active_ai_model_id(),
         "allowed_ai_models": ALLOWED_AI_MODELS,
         "teacher_system_prompt": teacher_system_prompt or get_teacher_system_prompt(),
         "student_system_prompt": student_system_prompt or get_student_system_prompt(),
@@ -330,12 +332,12 @@ def delete_submission(public_id: str):
 def update_ai_model():
     model_name = request.form.get("model_name", "").strip()
     try:
-        set_active_ai_model(model_name)
+        active_model = set_active_ai_model(model_name)
         db.session.commit()
-        flash(f"当前模型已切换为 {model_name}。", "success")
+        flash(f"当前模型已切换为 {active_model}。", "success")
     except ValueError:
         db.session.rollback()
-        flash("只能切换到 deepseek-v4-flash 或 deepseek-v4-pro。", "error")
+        flash(f"只能切换到 {' 或 '.join(ALLOWED_AI_MODELS)}。", "error")
     except SQLAlchemyError:
         db.session.rollback()
         flash("保存模型设置失败，请稍后再试。", "error")

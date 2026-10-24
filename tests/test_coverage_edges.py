@@ -541,10 +541,10 @@ def test_settings_update_existing_rows_touches_timestamp(app):
         db.session.commit()
         old_updated_at = db.session.get(SystemSetting, "active_ai_model").updated_at
 
-        assert set_active_ai_model(" deepseek-v4-flash ") == "deepseek-v4-flash"
+        assert set_active_ai_model(" deepseek-v4-flash ") == "deepseek-flash"
         prompts = set_ai_prompts(teacher_system_prompt=" teacher ", student_system_prompt=" student ")
         db.session.commit()
 
         assert prompts == {"teacher_system_prompt": "teacher", "student_system_prompt": "student"}
-        assert db.session.get(SystemSetting, "active_ai_model").value == "deepseek-v4-flash"
+        assert db.session.get(SystemSetting, "active_ai_model").value == "deepseek-flash"
         assert db.session.get(SystemSetting, "active_ai_model").updated_at >= old_updated_at

@@ -1305,7 +1305,7 @@ def test_student_can_submit_followup_and_persist_messages(app, client, monkeypat
         assert messages[0].context_label is None
         assert messages[0].context_text is None
         assert messages[1].role == "assistant"
-        assert messages[1].model_name == "deepseek-v4-pro"
+        assert messages[1].model_name == "deepseek-flash"
         assert messages[1].latency_ms == 66
 
 

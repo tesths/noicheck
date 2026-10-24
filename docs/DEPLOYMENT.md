@@ -1,25 +1,24 @@
 # 生产部署与运维手册
 
-更新时间：2026-07-29
+更新时间：2026-10-24
 
 本文记录当前生产部署、环境变量、迁移和线上核查方式。面向接手维护的人，优先保证能复现部署状态和排查队列问题。
 
 ## 当前线上状态
 
-通过 Vercel CLI 于 2026-07-29 核查：
+通过 Vercel CLI 于 2026-10-24 核查：
 
 - Vercel scope：`tesths-projects`
 - Vercel project：`noicheck`
-- 线上主域名：`https://noi.bbbypw.online`
-- 当前 production deployment：`dpl_BWcvBs2zbsMAmUxRukZ4nHaRJi5u`
+- 线上主域名：`https://noi.pythonturtle100.com`（旧文档里的 `noi.bbbypw.online` 已不在本项目的别名/link 列表里）
+- 当前 production deployment：`dpl_GrPezD4CadG1uabennL18LSeUxm6`
 - deployment 状态：`Ready`
-- deployment 创建时间：2026-07-20 11:19:30 CST
-- deployment URL：`https://noicheck-5h3f3r2xj-tesths-projects.vercel.app`
+- deployment 创建时间：2026-10-24 09:30:34 CST
+- deployment URL：`https://noicheck-iqbmhmduq-tesths-projects.vercel.app`
 - 线上别名：
-  - `https://noi.bbbypw.online`
+  - `https://noi.pythonturtle100.com`
   - `https://noicheck.vercel.app`
   - `https://noicheck-tesths-projects.vercel.app`
-  - `https://noicheck-git-main-tesths-projects.vercel.app`
 
 当前项目设置：
 
@@ -58,8 +57,9 @@ export HTTPS_PROXY=http://127.0.0.1:21081
 查看当前域名指向的部署：
 
 ```bash
-vercel inspect https://noi.bbbypw.online
-vercel inspect https://noi.bbbypw.online --format=json
+vercel inspect https://noi.pythonturtle100.com
+vercel inspect https://noi.pythonturtle100.com --format=json
+vercel alias ls   # 确认自定义域名当前挂在哪次 deployment 上
 ```
 
 查看项目配置：
@@ -90,8 +90,8 @@ vercel env list production
 | `SECRET_KEY` | Flask session 和 CSRF 密钥 | 必须替换成强随机值 |
 | `DATABASE_URL` | 生产数据库 | 必须是公网 Postgres |
 | `AI_API_KEY` | AI 服务密钥 | 不要写入仓库 |
-| `AI_BASE_URL` | AI 服务地址 | 默认可用 DeepSeek 地址 |
-| `AI_MODEL` | 默认模型名 | 当前后台只支持 `deepseek-v4-flash` / `deepseek-v4-pro` |
+| `AI_BASE_URL` | AI 服务地址 | DeepSeek 官方 `https://api.deepseek.com` 或 OpenRouter `https://openrouter.ai/api/v1` |
+| `AI_MODEL` | 默认模型名 | 填逻辑模型名 `deepseek-flash` / `deepseek-pro`，按 `AI_BASE_URL` 解析成供应商模型 ID |
 | `ADMIN_INIT_USERNAME` | 初始教师账号 | 首次部署或重建管理员时使用 |
 | `ADMIN_INIT_PASSWORD` | 初始教师密码 | 必须替换 |
 | `BOOTSTRAP_ON_STARTUP` | 启动时自动建表和初始化管理员 | 已有管理员后可设为 `false` |
@@ -125,7 +125,17 @@ vercel env list production
 - `DEEPSEEK_BASE_URL`
 - `DEEPSEEK_MODEL`
 
-新部署建议直接使用 `AI_*` 变量。旧变量只用于兼容历史环境。
+新部署建议直接使用 `AI_*` 变量。旧变量只用于兼容历史环境，代码里仍会读取，但生产 Vercel 环境已统一收敛到 `AI_*`。
+
+模型解析规则（`src/app/services/settings.py`）：
+
+| 逻辑模型名（`AI_MODEL` / 后台设置） | OpenRouter 实际模型 ID | DeepSeek 官方实际模型 ID |
+| --- | --- | --- |
+| `deepseek-flash` | `deepseek/deepseek-v4.1-flash-1017` | `deepseek-flash` |
+| `deepseek-pro` | `deepseek/deepseek-v4-pro` | `deepseek-pro` |
+
+- 后台只接受 `deepseek-flash` / `deepseek-pro`；旧值 `deepseek-v4-flash` / `deepseek-v4-pro` 仍能读入并自动归一。
+- 要升级到新的 Flash 快照，只改 `_PROVIDER_MODEL_IDS` 里 openrouter 那一行的模型 ID 即可。
 
 ## 数据库迁移
 
